@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { useRouter } from 'expo-router';
 import {
   Pressable,
   ScrollView,
@@ -73,6 +74,7 @@ const categories: Category[] = ['All', 'Food', 'Drink'];
 const pink = '#d82f78';
 
 export default function HomeScreen() {
+  const router = useRouter();
   const [category, setCategory] = useState<Category>('All');
   const [search, setSearch] = useState('');
 
@@ -166,7 +168,11 @@ export default function HomeScreen() {
         {visibleDeals.length > 0 ? (
           <View style={styles.dealList}>
             {visibleDeals.map((deal) => (
-              <DealCard deal={deal} key={deal.id} />
+              <DealCard
+                deal={deal}
+                key={deal.id}
+                onPress={() => router.push('/deal/joiner')}
+              />
             ))}
           </View>
         ) : (
@@ -180,9 +186,14 @@ export default function HomeScreen() {
   );
 }
 
-function DealCard({ deal }: { deal: Deal }) {
+function DealCard({ deal, onPress }: { deal: Deal; onPress: () => void }) {
   return (
-    <View style={styles.dealCard}>
+    <Pressable
+      accessibilityLabel={`Open deal: ${deal.title}`}
+      accessibilityRole="button"
+      onPress={onPress}
+      style={styles.dealCard}
+    >
       <View style={[styles.dealArtwork, { backgroundColor: deal.tint }]}>
         <Text style={styles.dealEmoji}>{deal.emoji}</Text>
       </View>
@@ -220,7 +231,7 @@ function DealCard({ deal }: { deal: Deal }) {
         <Text style={styles.perPerson}>per person</Text>
         <Text style={styles.distance}>⌖ {deal.distance}</Text>
       </View>
-    </View>
+    </Pressable>
   );
 }
 
