@@ -6,9 +6,11 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  TouchableOpacity,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import Svg, { Path } from 'react-native-svg';
 
 import { BrandMark } from '@/components/brand-mark';
 
@@ -108,14 +110,27 @@ export default function HomeScreen() {
               <Text style={styles.chevron}>›</Text>
             </Pressable>
           </View>
-          <Pressable
+          <TouchableOpacity
             accessibilityRole="button"
             accessibilityLabel="Notifications"
+            onPress={() => router.push('/notifications')}
             style={styles.notificationButton}
           >
-            <Text style={styles.notificationIcon}>♧</Text>
+            <Svg
+              fill="none"
+              height={23}
+              stroke="#514c59"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={1.8}
+              viewBox="0 0 24 24"
+              width={23}
+            >
+              <Path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" />
+              <Path d="M10 21h4" />
+            </Svg>
             <View style={styles.notificationDot} />
-          </Pressable>
+          </TouchableOpacity>
         </View>
 
         <View style={styles.searchBox}>
@@ -275,12 +290,6 @@ const styles = StyleSheet.create({
     height: 44,
     justifyContent: 'center',
     width: 44,
-  },
-  notificationIcon: {
-    color: '#514c59',
-    fontSize: 24,
-    lineHeight: 29,
-    transform: [{ rotate: '180deg' }],
   },
   notificationDot: {
     backgroundColor: pink,

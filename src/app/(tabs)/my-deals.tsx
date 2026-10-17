@@ -194,7 +194,8 @@ export default function MyDealsTab() {
         destination = '/deal/refund';
       }
     } else if (deal.role === 'Participant' || tab === 'joined') {
-      destination = '/deal/joiner';
+      destination =
+        deal.status === 'Paid' ? '/deal/post-payment' : '/deal/joiner';
     } else if (deal.status === 'Closed') {
       destination = '/deal/completed';
     } else if (tab === 'created') {
