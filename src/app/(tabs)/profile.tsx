@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useRouter, type Href } from 'expo-router';
 import {
+  ActivityIndicator,
   Modal,
   Pressable,
   ScrollView,
@@ -10,14 +11,82 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
+import { useAuth } from '@/contexts/auth-context';
 import { useProfile } from '@/contexts/profile-context';
+import { ApiError } from '@/services/auth-api';
+import {
+  getNotificationPreferences,
+  type NotificationCategory,
+  updateNotificationPreferences,
+} from '@/services/notification-api';
 
 export default function ProfileTab() {
   const router = useRouter();
+  const { accessToken, isRestoring } = useAuth();
   const { profile } = useProfile();
-  const [foodAlerts, setFoodAlerts] = useState(true);
-  const [drinkAlerts, setDrinkAlerts] = useState(true);
+  const [notificationCategories, setNotificationCategories] = useState<
+    NotificationCategory[]
+  >([]);
+  const [isLoadingPreferences, setIsLoadingPreferences] = useState(true);
+  const [isSavingPreferences, setIsSavingPreferences] = useState(false);
+  const [preferencesError, setPreferencesError] = useState('');
   const [showLogoutConfirmation, setShowLogoutConfirmation] = useState(false);
+
+  useEffect(() => {
+    if (isRestoring || !accessToken) {
+      return;
+    }
+
+    let isCurrent = true;
+    getNotificationPreferences(accessToken)
+      .then(({ categories }) => {
+        if (isCurrent) {
+          setNotificationCategories(categories);
+          setPreferencesError('');
+        }
+      })
+      .catch((error: unknown) => {
+        if (isCurrent) {
+          setPreferencesError(getPreferencesErrorMessage(error));
+        }
+      })
+      .finally(() => {
+        if (isCurrent) {
+          setIsLoadingPreferences(false);
+        }
+      });
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [accessToken, isRestoring]);
+
+  const toggleNotificationCategory = useCallback(
+    async (category: NotificationCategory) => {
+      if (!accessToken || isSavingPreferences) {
+        return;
+      }
+
+      const nextCategories = notificationCategories.includes(category)
+        ? notificationCategories.filter((item) => item !== category)
+        : [...notificationCategories, category];
+
+      setIsSavingPreferences(true);
+      setPreferencesError('');
+      try {
+        const result = await updateNotificationPreferences(
+          accessToken,
+          nextCategories,
+        );
+        setNotificationCategories(result.categories);
+      } catch (error: unknown) {
+        setPreferencesError(getPreferencesErrorMessage(error));
+      } finally {
+        setIsSavingPreferences(false);
+      }
+    },
+    [accessToken, isSavingPreferences, notificationCategories],
+  );
 
   return (
     <SafeAreaView edges={['top']} style={styles.safeArea}>
@@ -75,17 +144,46 @@ export default function ProfileTab() {
               <Text style={styles.sectionTitle}>Notification Settings</Text>
             </View>
             <View style={styles.settingsCard}>
+              {isRestoring || (accessToken && isLoadingPreferences) ? (
+                <ActivityIndicator
+                  accessibilityLabel="Loading notification settings"
+                  color="#be185d"
+                  style={styles.preferencesLoading}
+                />
+              ) : null}
+              {!isRestoring && !accessToken ? (
+                <Text accessibilityRole="alert" style={styles.preferencesError}>
+                  Please log in to load notification settings.
+                </Text>
+              ) : null}
+              {preferencesError ? (
+                <Text accessibilityRole="alert" style={styles.preferencesError}>
+                  {preferencesError}
+                </Text>
+              ) : null}
               <NotificationSetting
                 description="Notifications for nearby food deals"
-                enabled={foodAlerts}
+                disabled={
+                  !accessToken ||
+                  isLoadingPreferences ||
+                  isRestoring ||
+                  isSavingPreferences
+                }
+                enabled={notificationCategories.includes('FOOD')}
                 label="Food"
-                onToggle={() => setFoodAlerts((value) => !value)}
+                onToggle={() => toggleNotificationCategory('FOOD')}
               />
               <NotificationSetting
                 description="Notifications for nearby drink deals"
-                enabled={drinkAlerts}
+                disabled={
+                  !accessToken ||
+                  isLoadingPreferences ||
+                  isRestoring ||
+                  isSavingPreferences
+                }
+                enabled={notificationCategories.includes('DRINK')}
                 label="Drink"
-                onToggle={() => setDrinkAlerts((value) => !value)}
+                onToggle={() => toggleNotificationCategory('DRINK')}
                 last
               />
             </View>
@@ -139,6 +237,19 @@ export default function ProfileTab() {
   );
 }
 
+function getPreferencesErrorMessage(error: unknown) {
+  if (error instanceof ApiError && error.status === 401) {
+    return 'Your session has expired. Please log in again.';
+  }
+  if (error instanceof TypeError) {
+    return 'Could not connect to the server. Check your network and Gateway URL.';
+  }
+  if (error instanceof Error) {
+    return error.message;
+  }
+  return 'Unable to load notification settings. Please try again.';
+}
+
 function getInitials(fullName: string) {
   return fullName
     .trim()
@@ -153,12 +264,14 @@ function NotificationSetting({
   enabled,
   label,
   onToggle,
+  disabled = false,
   last = false,
 }: {
   description: string;
   enabled: boolean;
   label: string;
   onToggle: () => void;
+  disabled?: boolean;
   last?: boolean;
 }) {
   return (
@@ -171,8 +284,13 @@ function NotificationSetting({
         accessibilityLabel={`Toggle ${label} notifications`}
         accessibilityRole="switch"
         accessibilityState={{ checked: enabled }}
+        disabled={disabled}
         onPress={onToggle}
-        style={[styles.toggle, enabled ? styles.toggleEnabled : styles.toggleDisabled]}
+        style={[
+          styles.toggle,
+          enabled ? styles.toggleEnabled : styles.toggleDisabled,
+          disabled && styles.toggleDisabledInteraction,
+        ]}
       >
         <View style={[styles.toggleThumb, enabled && styles.toggleThumbEnabled]} />
       </Pressable>
@@ -392,6 +510,16 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.06,
     shadowRadius: 4,
   },
+  preferencesLoading: {
+    paddingVertical: 12,
+  },
+  preferencesError: {
+    color: '#b42354',
+    fontSize: 12,
+    lineHeight: 18,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+  },
   settingRow: {
     alignItems: 'center',
     flexDirection: 'row',
@@ -428,6 +556,9 @@ const styles = StyleSheet.create({
   },
   toggleDisabled: {
     backgroundColor: '#e2e8f0',
+  },
+  toggleDisabledInteraction: {
+    opacity: 0.6,
   },
   toggleThumb: {
     backgroundColor: '#fff',

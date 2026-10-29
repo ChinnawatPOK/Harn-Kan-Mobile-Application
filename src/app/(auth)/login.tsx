@@ -1,6 +1,7 @@
 import { router } from 'expo-router';
 import { useState } from 'react';
 import {
+  ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -13,28 +14,58 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { BrandMark } from '@/components/brand-mark';
+import { useAuth } from '@/contexts/auth-context';
+import { ApiError, loginAccount } from '@/services/auth-api';
 
 const colors = {
   ink: '#171321',
   muted: '#898594',
   pink: '#d82f78',
   border: '#ece9ef',
-  surface: '#fff7fb',
 };
 
 export default function LoginScreen() {
-  const [identity, setIdentity] = useState('');
+  const { saveAccessToken } = useAuth();
+  const [phoneNumber, setPhoneNumber] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const continueToHome = () => {
-    if (!identity.trim() || !password) {
-      setError('Enter your email or phone number and password to continue.');
+  const continueToHome = async () => {
+    if (isSubmitting) {
+      return;
+    }
+
+    if (!phoneNumber.trim() || !password) {
+      setError('Enter your phone number and password to continue.');
       return;
     }
 
     setError('');
-    router.replace('/(tabs)');
+    setIsSubmitting(true);
+    try {
+      const result = await loginAccount({
+        phoneNumber: phoneNumber.trim(),
+        password,
+      });
+      await saveAccessToken(result.token);
+      router.replace('/(tabs)');
+    } catch (requestError: unknown) {
+      if (
+        requestError instanceof ApiError &&
+        requestError.code === 'INVALID_CREDENTIALS'
+      ) {
+        setError('Phone number or password is incorrect.');
+      } else if (requestError instanceof TypeError) {
+        setError('Could not connect to the server. Check your network and Gateway URL.');
+      } else if (requestError instanceof Error) {
+        setError(requestError.message);
+      } else {
+        setError('Unable to log in. Please try again.');
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -58,27 +89,24 @@ export default function LoginScreen() {
 
           <View style={styles.form}>
             <View>
-              <Text style={styles.label}>EMAIL OR PHONE NUMBER</Text>
+              <Text style={styles.label}>PHONE NUMBER</Text>
               <TextInput
-                accessibilityLabel="Email or phone number"
+                accessibilityLabel="Phone number"
                 autoCapitalize="none"
-                autoComplete="username"
+                autoComplete="tel"
                 autoCorrect={false}
-                keyboardType="email-address"
-                onChangeText={setIdentity}
-                placeholder="you@example.com"
+                keyboardType="phone-pad"
+                onChangeText={setPhoneNumber}
+                placeholder="Enter your phone number"
                 placeholderTextColor="#b9b5c0"
                 returnKeyType="next"
                 style={styles.input}
-                value={identity}
+                value={phoneNumber}
               />
             </View>
 
             <View>
-              <View style={styles.passwordLabelRow}>
-                <Text style={styles.label}>PASSWORD</Text>
-                <Text style={styles.forgotPassword}>Forgot password?</Text>
-              </View>
+              <Text style={styles.label}>PASSWORD</Text>
               <TextInput
                 accessibilityLabel="Password"
                 autoComplete="current-password"
@@ -103,26 +131,17 @@ export default function LoginScreen() {
           <Pressable
             accessibilityRole="button"
             onPress={continueToHome}
-            style={({ pressed }) => [styles.loginButton, pressed && styles.pressed]}
+            disabled={isSubmitting}
+            style={({ pressed }) => [
+              styles.loginButton,
+              (pressed || isSubmitting) && styles.pressed,
+            ]}
           >
-            <Text style={styles.loginButtonText}>Login</Text>
-          </Pressable>
-
-          <View style={styles.dividerRow}>
-            <View style={styles.divider} />
-            <Text style={styles.dividerText}>OR CONTINUE WITH</Text>
-            <View style={styles.divider} />
-          </View>
-
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => setError('Google sign-in is not connected yet.')}
-            style={({ pressed }) => [styles.googleButton, pressed && styles.pressed]}
-          >
-            <View style={styles.googleMark}>
-              <Text style={styles.googleMarkText}>G</Text>
-            </View>
-            <Text style={styles.googleButtonText}>Continue with Google</Text>
+            {isSubmitting ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={styles.loginButtonText}>Login</Text>
+            )}
           </Pressable>
 
           <View style={styles.footer}>
@@ -135,7 +154,6 @@ export default function LoginScreen() {
               <Text style={styles.signupLink}>Sign up</Text>
             </Pressable>
           </View>
-          <Text style={styles.demoNote}>Demo screen — sign-in is not connected to a server.</Text>
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -183,17 +201,6 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
     marginBottom: 9,
   },
-  passwordLabelRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  forgotPassword: {
-    color: colors.pink,
-    fontSize: 11,
-    fontWeight: '800',
-    marginBottom: 9,
-  },
   input: {
     backgroundColor: '#fff',
     borderColor: colors.border,
@@ -228,59 +235,6 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 15,
     fontWeight: '800',
-  },
-  dividerRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: 12,
-    marginVertical: 23,
-  },
-  divider: {
-    backgroundColor: '#f0edf2',
-    flex: 1,
-    height: StyleSheet.hairlineWidth,
-  },
-  dividerText: {
-    color: '#aaa6b1',
-    fontSize: 10,
-    fontWeight: '800',
-    letterSpacing: 0.7,
-  },
-  googleButton: {
-    alignItems: 'center',
-    borderColor: colors.border,
-    borderRadius: 16,
-    borderWidth: 1,
-    flexDirection: 'row',
-    gap: 10,
-    justifyContent: 'center',
-    minHeight: 52,
-  },
-  googleMark: {
-    alignItems: 'center',
-    borderColor: colors.border,
-    borderRadius: 12,
-    borderWidth: 1,
-    height: 25,
-    justifyContent: 'center',
-    width: 25,
-  },
-  googleMarkText: {
-    color: colors.pink,
-    fontSize: 13,
-    fontWeight: '900',
-  },
-  googleButtonText: {
-    color: '#484451',
-    fontSize: 13,
-    fontWeight: '800',
-  },
-  demoNote: {
-    color: '#aaa6b1',
-    fontSize: 10,
-    lineHeight: 15,
-    marginTop: 14,
-    textAlign: 'center',
   },
   footer: {
     alignItems: 'center',

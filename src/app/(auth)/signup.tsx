@@ -1,6 +1,7 @@
 import { router } from 'expo-router';
 import { useState } from 'react';
 import {
+  ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -13,6 +14,8 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { BrandMark } from '@/components/brand-mark';
+import { useAuth } from '@/contexts/auth-context';
+import { ApiError, registerAccount } from '@/services/auth-api';
 
 const colors = {
   ink: '#171321',
@@ -22,13 +25,18 @@ const colors = {
 };
 
 export default function SignupScreen() {
+  const { saveAccessToken } = useAuth();
   const [fullName, setFullName] = useState('');
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [error, setError] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const createAccount = () => {
+  const createAccount = async () => {
+    if (isSubmitting) {
+      return;
+    }
     if (!fullName.trim() || !phone.trim() || !password) {
       setError('Please complete your name, phone number, and password.');
       return;
@@ -40,7 +48,32 @@ export default function SignupScreen() {
     }
 
     setError('');
-    router.replace('/(tabs)');
+    setIsSubmitting(true);
+    try {
+      const result = await registerAccount({
+        fullName: fullName.trim(),
+        phoneNumber: phone.trim(),
+        password,
+        acceptedTerms: true,
+      });
+      await saveAccessToken(result.token);
+      router.replace('/(tabs)');
+    } catch (requestError: unknown) {
+      if (
+        requestError instanceof ApiError &&
+        requestError.code === 'PHONE_ALREADY_REGISTERED'
+      ) {
+        setError('This phone number is already registered. Please log in instead.');
+      } else if (requestError instanceof TypeError) {
+        setError('Could not connect to the server. Check your network and Gateway URL.');
+      } else if (requestError instanceof Error) {
+        setError(requestError.message);
+      } else {
+        setError('Unable to create your account. Please try again.');
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -134,9 +167,14 @@ export default function SignupScreen() {
           <Pressable
             accessibilityRole="button"
             onPress={createAccount}
+            disabled={isSubmitting}
             style={({ pressed }) => [styles.signupButton, pressed && styles.pressed]}
           >
-            <Text style={styles.signupButtonText}>Sign Up</Text>
+            {isSubmitting ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={styles.signupButtonText}>Sign Up</Text>
+            )}
           </Pressable>
 
           <View style={styles.footer}>
@@ -149,7 +187,6 @@ export default function SignupScreen() {
               <Text style={styles.loginLink}>Login</Text>
             </Pressable>
           </View>
-          <Text style={styles.demoNote}>Demo screen — account creation is not connected to a server.</Text>
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
