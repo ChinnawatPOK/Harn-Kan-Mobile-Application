@@ -3,13 +3,11 @@ import { createContext, useContext, useMemo, useState, type ReactNode } from 're
 export type ProfileDetails = {
   fullName: string;
   phone: string;
-  email: string;
 };
 
 const initialProfile: ProfileDetails = {
-  fullName: 'Mali K.',
-  phone: '+66 81 234 5678',
-  email: 'mali@harnkan.com',
+  fullName: '',
+  phone: '',
 };
 
 const ProfileContext = createContext<{

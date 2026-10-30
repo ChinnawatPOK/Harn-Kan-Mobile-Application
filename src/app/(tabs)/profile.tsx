@@ -2,7 +2,6 @@ import { useCallback, useEffect, useState } from 'react';
 import { useRouter, type Href } from 'expo-router';
 import {
   ActivityIndicator,
-  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -19,18 +18,53 @@ import {
   type NotificationCategory,
   updateNotificationPreferences,
 } from '@/services/notification-api';
+import { getCurrentUserProfile } from '@/services/user-api';
 
 export default function ProfileTab() {
   const router = useRouter();
   const { accessToken, isRestoring } = useAuth();
-  const { profile } = useProfile();
+  const { profile, updateProfile } = useProfile();
   const [notificationCategories, setNotificationCategories] = useState<
     NotificationCategory[]
   >([]);
+  const [loadedProfileToken, setLoadedProfileToken] = useState<string | null>(
+    null,
+  );
+  const isLoadingProfile =
+    isRestoring || Boolean(accessToken && loadedProfileToken !== accessToken);
+  const [profileError, setProfileError] = useState('');
   const [isLoadingPreferences, setIsLoadingPreferences] = useState(true);
   const [isSavingPreferences, setIsSavingPreferences] = useState(false);
   const [preferencesError, setPreferencesError] = useState('');
-  const [showLogoutConfirmation, setShowLogoutConfirmation] = useState(false);
+
+  useEffect(() => {
+    if (isRestoring || !accessToken) {
+      return;
+    }
+
+    let isCurrent = true;
+    getCurrentUserProfile(accessToken)
+      .then((user) => {
+        if (isCurrent) {
+          updateProfile({ fullName: user.name, phone: user.phone_number });
+          setProfileError('');
+        }
+      })
+      .catch((error: unknown) => {
+        if (isCurrent) {
+          setProfileError(getPreferencesErrorMessage(error));
+        }
+      })
+      .finally(() => {
+        if (isCurrent) {
+          setLoadedProfileToken(accessToken);
+        }
+      });
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [accessToken, isRestoring, updateProfile]);
 
   useEffect(() => {
     if (isRestoring || !accessToken) {
@@ -116,7 +150,7 @@ export default function ProfileTab() {
               <View style={styles.avatarWrap}>
                 <View style={styles.avatar}>
                   <Text style={styles.avatarLabel}>
-                    {getInitials(profile.fullName)}
+                    {profile.fullName ? getInitials(profile.fullName) : '—'}
                   </Text>
                 </View>
                 <View style={styles.verifiedBadge}>
@@ -124,17 +158,18 @@ export default function ProfileTab() {
                 </View>
               </View>
               <View style={styles.memberInfo}>
-                <Text style={styles.memberName}>{profile.fullName}</Text>
-                <Text style={styles.memberPhone}>{profile.phone}</Text>
-                <Text style={styles.memberEmail}>{profile.email}</Text>
-                <View style={styles.rating}>
-                  <Icon color="#fcd34d" name="star" size={14} />
-                  <Text style={styles.ratingScore}>4.9</Text>
-                  <Text style={styles.trustedMember}>· Trusted member</Text>
-                </View>
+                <Text style={styles.memberName}>
+                  {isLoadingProfile ? 'Loading profile…' : profile.fullName || '—'}
+                </Text>
+                <Text style={styles.memberPhone}>{profile.phone || '—'}</Text>
               </View>
             </View>
           </View>
+          {profileError ? (
+            <Text accessibilityRole="alert" style={styles.preferencesError}>
+              {profileError}
+            </Text>
+          ) : null}
 
           <View style={styles.notificationSection}>
             <View style={styles.sectionHeader}>
@@ -190,49 +225,8 @@ export default function ProfileTab() {
           </View>
 
           <Text style={styles.version}>÷ KAN VERSION 1.0</Text>
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => setShowLogoutConfirmation(true)}
-            style={styles.logoutButton}
-          >
-            <Text style={styles.logoutText}>Log Out</Text>
-          </Pressable>
         </View>
       </ScrollView>
-      <Modal
-        animationType="fade"
-        onRequestClose={() => setShowLogoutConfirmation(false)}
-        transparent
-        visible={showLogoutConfirmation}
-      >
-        <View style={styles.modalOverlay}>
-          <View accessibilityViewIsModal style={styles.modalCard}>
-            <View style={styles.logoutConfirmationIcon}>
-              <Text style={styles.logoutConfirmationMark}>!</Text>
-            </View>
-            <Text style={styles.modalTitle}>Log Out?</Text>
-            <Text style={styles.modalMessage}>
-              Are you sure you want to log out of your account?
-            </Text>
-            <View style={styles.modalActions}>
-              <Pressable
-                accessibilityRole="button"
-                onPress={() => setShowLogoutConfirmation(false)}
-                style={styles.cancelButton}
-              >
-                <Text style={styles.cancelButtonText}>Cancel</Text>
-              </Pressable>
-              <Pressable
-                accessibilityRole="button"
-                onPress={() => router.replace('/(auth)/login')}
-                style={styles.confirmLogoutButton}
-              >
-                <Text style={styles.confirmLogoutText}>Log Out</Text>
-              </Pressable>
-            </View>
-          </View>
-        </View>
-      </Modal>
     </SafeAreaView>
   );
 }
@@ -304,7 +298,7 @@ function Icon({
   size,
 }: {
   color: string;
-  name: 'bell' | 'check' | 'star';
+  name: 'bell' | 'check';
   size: number;
 }) {
   return (
@@ -314,7 +308,7 @@ function Icon({
       stroke={color}
       strokeLinecap="round"
       strokeLinejoin="round"
-      strokeWidth={name === 'star' ? 1.8 : 2}
+      strokeWidth={2}
       viewBox="0 0 24 24"
       width={size}
     >
@@ -325,9 +319,6 @@ function Icon({
         </>
       ) : null}
       {name === 'check' ? <Path d="m5 12 4 4L19 6" /> : null}
-      {name === 'star' ? (
-        <Path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-2.9-5.6 2.9 1.1-6.2L3 9.6l6.2-.9L12 3Z" />
-      ) : null}
     </Svg>
   );
 }
@@ -455,28 +446,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     marginTop: 4,
-  },
-  memberEmail: {
-    color: '#fbcfe8',
-    fontSize: 11,
-    fontWeight: '500',
-    marginTop: 2,
-  },
-  rating: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: 4,
-    marginTop: 8,
-  },
-  ratingScore: {
-    color: '#fcd34d',
-    fontSize: 12,
-    fontWeight: '800',
-  },
-  trustedMember: {
-    color: '#fbcfe8',
-    fontSize: 12,
-    fontWeight: '500',
   },
   notificationSection: {
     marginVertical: 20,
