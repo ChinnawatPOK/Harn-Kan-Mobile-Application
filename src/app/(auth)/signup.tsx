@@ -1,5 +1,5 @@
-import { router } from 'expo-router';
-import { useState } from 'react';
+import { router } from "expo-router";
+import { useState } from "react";
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -10,27 +10,28 @@ import {
   Text,
   TextInput,
   View,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
-import { BrandMark } from '@/components/brand-mark';
-import { useAuth } from '@/contexts/auth-context';
-import { ApiError, registerAccount } from '@/services/auth-api';
+import { ApiError, getErrorMessage } from "@/api/errors";
+import { BrandMark } from "@/components/brand-mark";
+import { useAuth } from "@/hooks/useAuth";
+import { loginAccount, registerAccount } from "@/services/auth.service";
 
 const colors = {
-  ink: '#171321',
-  muted: '#898594',
-  pink: '#d82f78',
-  border: '#ece9ef',
+  ink: "#171321",
+  muted: "#898594",
+  pink: "#d82f78",
+  border: "#ece9ef",
 };
 
 export default function SignupScreen() {
   const { saveAccessToken } = useAuth();
-  const [fullName, setFullName] = useState('');
-  const [phone, setPhone] = useState('');
-  const [password, setPassword] = useState('');
+  const [fullName, setFullName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [password, setPassword] = useState("");
   const [agreedToTerms, setAgreedToTerms] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const createAccount = async () => {
@@ -38,38 +39,39 @@ export default function SignupScreen() {
       return;
     }
     if (!fullName.trim() || !phone.trim() || !password) {
-      setError('Please complete your name, phone number, and password.');
+      setError("Please complete your name, phone number, and password.");
       return;
     }
 
     if (!agreedToTerms) {
-      setError('Please agree to the Terms and Conditions to continue.');
+      setError("Please agree to the Terms and Conditions to continue.");
       return;
     }
 
-    setError('');
+    setError("");
     setIsSubmitting(true);
     try {
-      const result = await registerAccount({
-        fullName: fullName.trim(),
-        phoneNumber: phone.trim(),
-        password,
-        acceptedTerms: true,
-      });
-      await saveAccessToken(result.token);
-      router.replace('/(tabs)');
+      const credentials = { phoneNumber: phone.trim(), password };
+      await registerAccount({ name: fullName.trim(), ...credentials });
+      // Registration doesn't return a token, so sign in with the same credentials.
+      const { accessToken } = await loginAccount(credentials);
+      await saveAccessToken(accessToken);
+      router.replace("/(tabs)");
     } catch (requestError: unknown) {
       if (
         requestError instanceof ApiError &&
-        requestError.code === 'PHONE_ALREADY_REGISTERED'
+        requestError.code === "PHONE_ALREADY_REGISTERED"
       ) {
-        setError('This phone number is already registered. Please log in instead.');
-      } else if (requestError instanceof TypeError) {
-        setError('Could not connect to the server. Check your network and Gateway URL.');
-      } else if (requestError instanceof Error) {
-        setError(requestError.message);
+        setError(
+          "This phone number is already registered. Please log in instead.",
+        );
       } else {
-        setError('Unable to create your account. Please try again.');
+        setError(
+          getErrorMessage(
+            requestError,
+            "Unable to create your account. Please try again.",
+          ),
+        );
       }
     } finally {
       setIsSubmitting(false);
@@ -79,7 +81,7 @@ export default function SignupScreen() {
   return (
     <SafeAreaView style={styles.safeArea}>
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
         style={styles.flex}
       >
         <ScrollView
@@ -150,11 +152,14 @@ export default function SignupScreen() {
             onPress={() => setAgreedToTerms((agreed) => !agreed)}
             style={styles.termsRow}
           >
-            <View style={[styles.checkbox, agreedToTerms && styles.checkboxChecked]}>
+            <View
+              style={[styles.checkbox, agreedToTerms && styles.checkboxChecked]}
+            >
               {agreedToTerms ? <Text style={styles.checkmark}>✓</Text> : null}
             </View>
             <Text style={styles.termsText}>
-              I agree to the <Text style={styles.termsLink}>Terms and Conditions</Text>
+              I agree to the{" "}
+              <Text style={styles.termsLink}>Terms and Conditions</Text>
             </Text>
           </Pressable>
 
@@ -168,7 +173,10 @@ export default function SignupScreen() {
             accessibilityRole="button"
             onPress={createAccount}
             disabled={isSubmitting}
-            style={({ pressed }) => [styles.signupButton, pressed && styles.pressed]}
+            style={({ pressed }) => [
+              styles.signupButton,
+              pressed && styles.pressed,
+            ]}
           >
             {isSubmitting ? (
               <ActivityIndicator color="#fff" />
@@ -181,7 +189,7 @@ export default function SignupScreen() {
             <Text style={styles.footerText}>Already have an account? </Text>
             <Pressable
               accessibilityRole="link"
-              onPress={() => router.replace('/(auth)/login')}
+              onPress={() => router.replace("/(auth)/login")}
               hitSlop={8}
             >
               <Text style={styles.loginLink}>Login</Text>
@@ -195,7 +203,7 @@ export default function SignupScreen() {
 
 const styles = StyleSheet.create({
   safeArea: {
-    backgroundColor: '#fff',
+    backgroundColor: "#fff",
     flex: 1,
   },
   flex: {
@@ -213,13 +221,13 @@ const styles = StyleSheet.create({
   title: {
     color: colors.ink,
     fontSize: 30,
-    fontWeight: '800',
+    fontWeight: "800",
     letterSpacing: -0.8,
   },
   subtitle: {
     color: colors.muted,
     fontSize: 14,
-    fontWeight: '500',
+    fontWeight: "500",
     lineHeight: 22,
     marginTop: 8,
   },
@@ -228,38 +236,38 @@ const styles = StyleSheet.create({
     marginTop: 27,
   },
   label: {
-    color: '#484451',
+    color: "#484451",
     fontSize: 11,
-    fontWeight: '800',
+    fontWeight: "800",
     letterSpacing: 0.5,
     marginBottom: 9,
   },
   input: {
-    backgroundColor: '#fff',
+    backgroundColor: "#fff",
     borderColor: colors.border,
     borderRadius: 16,
     borderWidth: 1,
     color: colors.ink,
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: "600",
     minHeight: 54,
     paddingHorizontal: 16,
   },
   termsRow: {
-    alignItems: 'center',
-    alignSelf: 'flex-start',
-    flexDirection: 'row',
+    alignItems: "center",
+    alignSelf: "flex-start",
+    flexDirection: "row",
     gap: 10,
     marginTop: 20,
     minHeight: 28,
   },
   checkbox: {
-    alignItems: 'center',
-    borderColor: '#d8d3dc',
+    alignItems: "center",
+    borderColor: "#d8d3dc",
     borderRadius: 5,
     borderWidth: 1.5,
     height: 19,
-    justifyContent: 'center',
+    justifyContent: "center",
     width: 19,
   },
   checkboxChecked: {
@@ -267,33 +275,33 @@ const styles = StyleSheet.create({
     borderColor: colors.pink,
   },
   checkmark: {
-    color: '#fff',
+    color: "#fff",
     fontSize: 13,
-    fontWeight: '900',
+    fontWeight: "900",
     lineHeight: 16,
   },
   termsText: {
-    color: '#716c79',
+    color: "#716c79",
     fontSize: 12,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   termsLink: {
     color: colors.pink,
-    fontWeight: '800',
-    textDecorationLine: 'underline',
-    textDecorationColor: '#f2a5c6',
+    fontWeight: "800",
+    textDecorationLine: "underline",
+    textDecorationColor: "#f2a5c6",
   },
   error: {
-    color: '#b42354',
+    color: "#b42354",
     fontSize: 12,
     lineHeight: 18,
     marginTop: 10,
   },
   signupButton: {
-    alignItems: 'center',
+    alignItems: "center",
     backgroundColor: colors.pink,
     borderRadius: 16,
-    justifyContent: 'center',
+    justifyContent: "center",
     marginTop: 18,
     minHeight: 54,
     shadowColor: colors.pink,
@@ -303,33 +311,33 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   signupButtonText: {
-    color: '#fff',
+    color: "#fff",
     fontSize: 15,
-    fontWeight: '800',
+    fontWeight: "800",
   },
   footer: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'center',
-    marginTop: 'auto',
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "center",
+    marginTop: "auto",
     paddingTop: 25,
   },
   footerText: {
-    color: '#716c79',
+    color: "#716c79",
     fontSize: 12,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   loginLink: {
     color: colors.pink,
     fontSize: 12,
-    fontWeight: '800',
+    fontWeight: "800",
   },
   demoNote: {
-    color: '#aaa6b1',
+    color: "#aaa6b1",
     fontSize: 10,
     lineHeight: 15,
     marginTop: 12,
-    textAlign: 'center',
+    textAlign: "center",
   },
   pressed: {
     opacity: 0.82,

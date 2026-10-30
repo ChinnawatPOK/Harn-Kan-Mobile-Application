@@ -1,5 +1,5 @@
-import { router } from 'expo-router';
-import { useState } from 'react';
+import { router } from "expo-router";
+import { useState } from "react";
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -10,25 +10,26 @@ import {
   Text,
   TextInput,
   View,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
-import { BrandMark } from '@/components/brand-mark';
-import { useAuth } from '@/contexts/auth-context';
-import { ApiError, loginAccount } from '@/services/auth-api';
+import { ApiError, getErrorMessage } from "@/api/errors";
+import { BrandMark } from "@/components/brand-mark";
+import { useAuth } from "@/hooks/useAuth";
+import { loginAccount } from "@/services/auth.service";
 
 const colors = {
-  ink: '#171321',
-  muted: '#898594',
-  pink: '#d82f78',
-  border: '#ece9ef',
+  ink: "#171321",
+  muted: "#898594",
+  pink: "#d82f78",
+  border: "#ece9ef",
 };
 
 export default function LoginScreen() {
   const { saveAccessToken } = useAuth();
-  const [phoneNumber, setPhoneNumber] = useState('');
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
+  const [phoneNumber, setPhoneNumber] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const continueToHome = async () => {
@@ -37,31 +38,29 @@ export default function LoginScreen() {
     }
 
     if (!phoneNumber.trim() || !password) {
-      setError('Enter your phone number and password to continue.');
+      setError("Enter your phone number and password to continue.");
       return;
     }
 
-    setError('');
+    setError("");
     setIsSubmitting(true);
     try {
       const result = await loginAccount({
         phoneNumber: phoneNumber.trim(),
         password,
       });
-      await saveAccessToken(result.token);
-      router.replace('/(tabs)');
+      await saveAccessToken(result.accessToken);
+      router.replace("/(tabs)");
     } catch (requestError: unknown) {
       if (
         requestError instanceof ApiError &&
-        requestError.code === 'INVALID_CREDENTIALS'
+        requestError.code === "INVALID_CREDENTIALS"
       ) {
-        setError('Phone number or password is incorrect.');
-      } else if (requestError instanceof TypeError) {
-        setError('Could not connect to the server. Check your network and Gateway URL.');
-      } else if (requestError instanceof Error) {
-        setError(requestError.message);
+        setError("Phone number or password is incorrect.");
       } else {
-        setError('Unable to log in. Please try again.');
+        setError(
+          getErrorMessage(requestError, "Unable to log in. Please try again."),
+        );
       }
     } finally {
       setIsSubmitting(false);
@@ -71,7 +70,7 @@ export default function LoginScreen() {
   return (
     <SafeAreaView style={styles.safeArea}>
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
         style={styles.flex}
       >
         <ScrollView
@@ -149,7 +148,7 @@ export default function LoginScreen() {
             <Pressable
               accessibilityRole="link"
               hitSlop={8}
-              onPress={() => router.push('/(auth)/signup')}
+              onPress={() => router.push("/(auth)/signup")}
             >
               <Text style={styles.signupLink}>Sign up</Text>
             </Pressable>
@@ -162,7 +161,7 @@ export default function LoginScreen() {
 
 const styles = StyleSheet.create({
   safeArea: {
-    backgroundColor: '#fff',
+    backgroundColor: "#fff",
     flex: 1,
   },
   flex: {
@@ -180,13 +179,13 @@ const styles = StyleSheet.create({
   title: {
     color: colors.ink,
     fontSize: 30,
-    fontWeight: '800',
+    fontWeight: "800",
     letterSpacing: -0.8,
   },
   subtitle: {
     color: colors.muted,
     fontSize: 14,
-    fontWeight: '500',
+    fontWeight: "500",
     lineHeight: 22,
     marginTop: 8,
   },
@@ -195,34 +194,34 @@ const styles = StyleSheet.create({
     marginTop: 30,
   },
   label: {
-    color: '#484451',
+    color: "#484451",
     fontSize: 11,
-    fontWeight: '800',
+    fontWeight: "800",
     letterSpacing: 0.5,
     marginBottom: 9,
   },
   input: {
-    backgroundColor: '#fff',
+    backgroundColor: "#fff",
     borderColor: colors.border,
     borderRadius: 16,
     borderWidth: 1,
     color: colors.ink,
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: "600",
     minHeight: 54,
     paddingHorizontal: 16,
   },
   error: {
-    color: '#b42354',
+    color: "#b42354",
     fontSize: 12,
     lineHeight: 18,
     marginTop: 12,
   },
   loginButton: {
-    alignItems: 'center',
+    alignItems: "center",
     backgroundColor: colors.pink,
     borderRadius: 16,
-    justifyContent: 'center',
+    justifyContent: "center",
     marginTop: 24,
     minHeight: 54,
     shadowColor: colors.pink,
@@ -232,26 +231,26 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   loginButtonText: {
-    color: '#fff',
+    color: "#fff",
     fontSize: 15,
-    fontWeight: '800',
+    fontWeight: "800",
   },
   footer: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'center',
-    marginTop: 'auto',
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "center",
+    marginTop: "auto",
     paddingTop: 26,
   },
   footerText: {
-    color: '#716c79',
+    color: "#716c79",
     fontSize: 12,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   signupLink: {
     color: colors.pink,
     fontSize: 12,
-    fontWeight: '800',
+    fontWeight: "800",
   },
   pressed: {
     opacity: 0.82,
