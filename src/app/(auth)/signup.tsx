@@ -42,6 +42,11 @@ export default function SignupScreen() {
       return;
     }
 
+    if (password.length < 8) {
+      setError('Password must contain at least 8 characters.');
+      return;
+    }
+
     if (!agreedToTerms) {
       setError('Please agree to the Terms and Conditions to continue.');
       return;
@@ -134,13 +139,14 @@ export default function SignupScreen() {
                 autoComplete="new-password"
                 onChangeText={setPassword}
                 onSubmitEditing={createAccount}
-                placeholder="Create a password"
+                placeholder="At least 8 characters"
                 placeholderTextColor="#b9b5c0"
                 returnKeyType="done"
                 secureTextEntry
                 style={styles.input}
                 value={password}
               />
+              <Text style={styles.passwordHint}>Use at least 8 characters.</Text>
             </View>
           </View>
 
@@ -244,6 +250,11 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     minHeight: 54,
     paddingHorizontal: 16,
+  },
+  passwordHint: {
+    color: colors.muted,
+    fontSize: 11,
+    marginTop: 6,
   },
   termsRow: {
     alignItems: 'center',
