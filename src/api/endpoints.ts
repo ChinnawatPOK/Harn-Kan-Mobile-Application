@@ -6,4 +6,7 @@ export const endpoints = {
   notifications: {
     preferences: "/api/notifications/preferences",
   },
+  users: {
+    me: "/api/users/me",
+  },
 } as const;

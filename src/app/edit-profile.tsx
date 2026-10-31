@@ -13,22 +13,48 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Circle, Path } from 'react-native-svg';
-import { useProfile } from '@/contexts/profile-context';
+import { getErrorMessage } from '@/api/errors';
+import { useAuth } from '@/hooks/useAuth';
+import { useProfile, useUpdateProfile } from '@/hooks/useProfile';
 
 export default function EditProfileScreen() {
   const router = useRouter();
-  const { profile, updateProfile } = useProfile();
-  const [fullName, setFullName] = useState(profile.fullName);
-  const [phone, setPhone] = useState(profile.phone);
-  const [email, setEmail] = useState(profile.email);
+  const { accessToken } = useAuth();
+  const { data: profile } = useProfile();
+  const updateProfile = useUpdateProfile();
+  const [fullName, setFullName] = useState(profile?.name ?? '');
+  const [phone, setPhone] = useState(profile?.phoneNumber ?? '');
   const [showSaveConfirmation, setShowSaveConfirmation] = useState(false);
-  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [saveError, setSaveError] = useState('');
+  const isSaving = updateProfile.isPending;
 
   const goBack = () => router.back();
-  const saveChanges = () => {
-    updateProfile({ fullName: fullName.trim(), phone: phone.trim(), email: email.trim() });
-    setShowSaveConfirmation(false);
-    router.back();
+  const saveChanges = async () => {
+    if (isSaving) {
+      return;
+    }
+    if (!accessToken) {
+      setSaveError('Please log in again to update your profile.');
+      return;
+    }
+    if (!fullName.trim() || !phone.trim()) {
+      setSaveError('Enter your full name and phone number.');
+      return;
+    }
+
+    setSaveError('');
+    try {
+      await updateProfile.mutateAsync({
+        name: fullName.trim(),
+        phoneNumber: phone.trim(),
+      });
+      setShowSaveConfirmation(false);
+      router.back();
+    } catch (error: unknown) {
+      setSaveError(
+        getErrorMessage(error, 'Unable to save your profile. Please try again.'),
+      );
+    }
   };
 
   return (
@@ -111,15 +137,6 @@ export default function EditProfileScreen() {
                 returnKeyType="next"
                 value={phone}
               />
-              <ProfileField
-                autoCapitalize="none"
-                autoComplete="email"
-                keyboardType="email-address"
-                label="EMAIL ADDRESS"
-                onChangeText={setEmail}
-                returnKeyType="done"
-                value={email}
-              />
             </View>
           </View>
 
@@ -133,13 +150,6 @@ export default function EditProfileScreen() {
               ]}
             >
               <Text style={styles.saveButtonText}>Save Changes</Text>
-            </Pressable>
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => setShowDeleteModal(true)}
-              style={styles.deleteButton}
-            >
-              <Text style={styles.deleteButtonText}>Delete Account</Text>
             </Pressable>
           </View>
         </ScrollView>
@@ -155,13 +165,17 @@ export default function EditProfileScreen() {
           <View accessibilityViewIsModal style={styles.modalCard}>
             <Text style={styles.saveModalTitle}>Save Changes?</Text>
             <Text style={styles.modalMessage}>
-              Save the updated name, phone number, and email address to your profile?
+              Save the updated name and phone number to your profile?
             </Text>
             <View style={styles.saveSummary}>
               <ProfileSummaryRow label="Name" value={fullName.trim() || '—'} />
               <ProfileSummaryRow label="Phone" value={phone.trim() || '—'} />
-              <ProfileSummaryRow label="Email" value={email.trim() || '—'} />
             </View>
+            {saveError ? (
+              <Text accessibilityRole="alert" style={styles.saveError}>
+                {saveError}
+              </Text>
+            ) : null}
             <View style={styles.modalActions}>
               <Pressable
                 accessibilityRole="button"
@@ -173,65 +187,18 @@ export default function EditProfileScreen() {
               <Pressable
                 accessibilityRole="button"
                 onPress={saveChanges}
+                disabled={isSaving}
                 style={styles.confirmSaveButton}
               >
-                <Text style={styles.confirmSaveText}>Save Changes</Text>
+                <Text style={styles.confirmSaveText}>
+                  {isSaving ? 'Saving…' : 'Save Changes'}
+                </Text>
               </Pressable>
             </View>
           </View>
         </View>
       </Modal>
 
-      <Modal
-        animationType="fade"
-        onRequestClose={() => setShowDeleteModal(false)}
-        transparent
-        visible={showDeleteModal}
-      >
-        <View style={styles.modalOverlay}>
-          <View
-            accessibilityViewIsModal
-            style={styles.modalCard}
-          >
-            <View style={styles.warningIcon}>
-              <Svg
-                fill="none"
-                height={26}
-                stroke="#dc2626"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                viewBox="0 0 24 24"
-                width={26}
-              >
-                <Path d="M10.3 4.4 2.6 18a2 2 0 0 0 1.8 3h15.2a2 2 0 0 0 1.8-3L13.7 4.4a2 2 0 0 0-3.4 0Z" />
-                <Path d="M12 9v4M12 17h.01" />
-              </Svg>
-            </View>
-            <Text style={styles.modalTitle}>Delete Account</Text>
-            <Text style={styles.modalMessage}>
-              Are you sure you want to delete your account? This action cannot
-              be undone.
-            </Text>
-            <View style={styles.modalActions}>
-              <Pressable
-                accessibilityRole="button"
-                onPress={() => setShowDeleteModal(false)}
-                style={styles.cancelButton}
-              >
-                <Text style={styles.cancelButtonText}>Cancel</Text>
-              </Pressable>
-              <Pressable
-                accessibilityRole="button"
-                onPress={() => router.replace('/(auth)/login')}
-                style={styles.confirmDeleteButton}
-              >
-                <Text style={styles.confirmDeleteText}>Yes, Delete</Text>
-              </Pressable>
-            </View>
-          </View>
-        </View>
-      </Modal>
     </SafeAreaView>
   );
 }
@@ -263,9 +230,8 @@ function ProfileSummaryRow({
 }
 
 type ProfileFieldProps = {
-  autoCapitalize?: 'none' | 'sentences' | 'words' | 'characters';
-  autoComplete: 'name' | 'tel' | 'email';
-  keyboardType?: 'default' | 'email-address' | 'phone-pad';
+  autoComplete: 'name' | 'tel';
+  keyboardType?: 'default' | 'phone-pad';
   label: string;
   onChangeText: (value: string) => void;
   returnKeyType: 'next' | 'done';
@@ -273,7 +239,6 @@ type ProfileFieldProps = {
 };
 
 function ProfileField({
-  autoCapitalize,
   autoComplete,
   keyboardType = 'default',
   label,
@@ -286,7 +251,6 @@ function ProfileField({
       <Text style={styles.fieldLabel}>{label}</Text>
       <TextInput
         accessibilityLabel={label}
-        autoCapitalize={autoCapitalize}
         autoComplete={autoComplete}
         autoCorrect={false}
         keyboardType={keyboardType}
@@ -431,16 +395,6 @@ const styles = StyleSheet.create({
     opacity: 0.9,
     transform: [{ scale: 0.98 }],
   },
-  deleteButton: {
-    alignItems: 'center',
-    marginTop: 12,
-    paddingVertical: 8,
-  },
-  deleteButtonText: {
-    color: '#ef4444',
-    fontSize: 12,
-    fontWeight: '800',
-  },
   modalOverlay: {
     alignItems: 'center',
     backgroundColor: 'rgba(2, 6, 23, 0.3)',
@@ -459,22 +413,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.18,
     shadowRadius: 20,
     width: '100%',
-  },
-  warningIcon: {
-    alignItems: 'center',
-    backgroundColor: '#fef2f2',
-    borderRadius: 28,
-    height: 56,
-    justifyContent: 'center',
-    width: 56,
-  },
-  modalTitle: {
-    color: '#020617',
-    fontSize: 20,
-    fontWeight: '800',
-    letterSpacing: -0.4,
-    marginTop: 20,
-    textAlign: 'center',
   },
   saveModalTitle: {
     color: '#020617',
@@ -519,6 +457,13 @@ const styles = StyleSheet.create({
     marginTop: 12,
     textAlign: 'center',
   },
+  saveError: {
+    alignSelf: 'stretch',
+    color: '#b42354',
+    fontSize: 12,
+    lineHeight: 18,
+    marginTop: 10,
+  },
   modalActions: {
     flexDirection: 'row',
     gap: 12,
@@ -539,18 +484,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '800',
   },
-  confirmDeleteButton: {
-    alignItems: 'center',
-    backgroundColor: '#dc2626',
-    borderRadius: 16,
-    elevation: 4,
-    flex: 1,
-    paddingVertical: 14,
-    shadowColor: '#fee2e2',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.8,
-    shadowRadius: 7,
-  },
   confirmSaveButton: {
     alignItems: 'center',
     backgroundColor: '#db2777',
@@ -564,11 +497,6 @@ const styles = StyleSheet.create({
     shadowRadius: 7,
   },
   confirmSaveText: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '800',
-  },
-  confirmDeleteText: {
     color: '#fff',
     fontSize: 14,
     fontWeight: '800',

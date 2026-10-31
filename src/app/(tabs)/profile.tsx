@@ -1,32 +1,36 @@
-import { getErrorMessage } from "@/api/errors";
-import { useProfile } from "@/contexts/profile-context";
-import { useAuth } from "@/hooks/useAuth";
-import {
-  useNotificationPreferences,
-  useUpdateNotificationPreferences,
-} from "@/hooks/useNotificationPreferences";
-import type { NotificationCategory } from "@/schemas/notification.schema";
-import { useRouter, type Href } from "expo-router";
-import { useState } from "react";
+import { useRouter, type Href } from 'expo-router';
 import {
   ActivityIndicator,
-  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   View,
-} from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
-import Svg, { Path } from "react-native-svg";
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import Svg, { Path } from 'react-native-svg';
+import { getErrorMessage } from '@/api/errors';
+import { useAuth } from '@/hooks/useAuth';
+import {
+  useNotificationPreferences,
+  useUpdateNotificationPreferences,
+} from '@/hooks/useNotificationPreferences';
+import { useProfile } from '@/hooks/useProfile';
+import type { NotificationCategory } from '@/schemas/notification.schema';
 
 export default function ProfileTab() {
   const router = useRouter();
-  const { accessToken, isRestoring, logout } = useAuth();
-  const { profile } = useProfile();
+  const { accessToken, isRestoring } = useAuth();
+  const profileQuery = useProfile();
   const preferencesQuery = useNotificationPreferences();
   const updatePreferences = useUpdateNotificationPreferences();
-  const [showLogoutConfirmation, setShowLogoutConfirmation] = useState(false);
+
+  const profile = profileQuery.data;
+  const isLoadingProfile =
+    isRestoring || Boolean(accessToken && profileQuery.isPending);
+  const profileError = profileQuery.error
+    ? getErrorMessage(profileQuery.error, 'Unable to load your profile.')
+    : '';
 
   const notificationCategories = preferencesQuery.data?.categories ?? [];
   const isLoadingPreferences = preferencesQuery.isPending;
@@ -36,9 +40,9 @@ export default function ProfileTab() {
   const preferencesError = preferencesRequestError
     ? getErrorMessage(
         preferencesRequestError,
-        "Unable to load notification settings. Please try again.",
+        'Unable to load notification settings. Please try again.',
       )
-    : "";
+    : '';
 
   const toggleNotificationCategory = (category: NotificationCategory) => {
     if (!accessToken || isSavingPreferences) {
@@ -52,14 +56,8 @@ export default function ProfileTab() {
     );
   };
 
-  const logOut = async () => {
-    setShowLogoutConfirmation(false);
-    await logout();
-    router.replace("/(auth)/login");
-  };
-
   return (
-    <SafeAreaView edges={["top"]} style={styles.safeArea}>
+    <SafeAreaView edges={['top']} style={styles.safeArea}>
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
@@ -70,7 +68,7 @@ export default function ProfileTab() {
           <View style={styles.topBarAction}>
             <Pressable
               accessibilityRole="button"
-              onPress={() => router.push("/edit-profile" as Href)}
+              onPress={() => router.push('/edit-profile' as Href)}
               style={styles.editButton}
             >
               <Text style={styles.editButtonText}>Edit</Text>
@@ -86,7 +84,7 @@ export default function ProfileTab() {
               <View style={styles.avatarWrap}>
                 <View style={styles.avatar}>
                   <Text style={styles.avatarLabel}>
-                    {getInitials(profile.fullName)}
+                    {profile?.name ? getInitials(profile.name) : '—'}
                   </Text>
                 </View>
                 <View style={styles.verifiedBadge}>
@@ -94,17 +92,18 @@ export default function ProfileTab() {
                 </View>
               </View>
               <View style={styles.memberInfo}>
-                <Text style={styles.memberName}>{profile.fullName}</Text>
-                <Text style={styles.memberPhone}>{profile.phone}</Text>
-                <Text style={styles.memberEmail}>{profile.email}</Text>
-                <View style={styles.rating}>
-                  <Icon color="#fcd34d" name="star" size={14} />
-                  <Text style={styles.ratingScore}>4.9</Text>
-                  <Text style={styles.trustedMember}>· Trusted member</Text>
-                </View>
+                <Text style={styles.memberName}>
+                  {isLoadingProfile ? 'Loading profile…' : profile?.name || '—'}
+                </Text>
+                <Text style={styles.memberPhone}>{profile?.phoneNumber || '—'}</Text>
               </View>
             </View>
           </View>
+          {profileError ? (
+            <Text accessibilityRole="alert" style={styles.preferencesError}>
+              {profileError}
+            </Text>
+          ) : null}
 
           <View style={styles.notificationSection}>
             <View style={styles.sectionHeader}>
@@ -139,9 +138,9 @@ export default function ProfileTab() {
                   isRestoring ||
                   isSavingPreferences
                 }
-                enabled={notificationCategories.includes("FOOD")}
+                enabled={notificationCategories.includes('FOOD')}
                 label="Food"
-                onToggle={() => toggleNotificationCategory("FOOD")}
+                onToggle={() => toggleNotificationCategory('FOOD')}
               />
               <NotificationSetting
                 description="Notifications for nearby drink deals"
@@ -151,58 +150,17 @@ export default function ProfileTab() {
                   isRestoring ||
                   isSavingPreferences
                 }
-                enabled={notificationCategories.includes("DRINK")}
+                enabled={notificationCategories.includes('DRINK')}
                 label="Drink"
-                onToggle={() => toggleNotificationCategory("DRINK")}
+                onToggle={() => toggleNotificationCategory('DRINK')}
                 last
               />
             </View>
           </View>
 
           <Text style={styles.version}>÷ KAN VERSION 1.0</Text>
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => setShowLogoutConfirmation(true)}
-            style={styles.logoutButton}
-          >
-            <Text style={styles.logoutText}>Log Out</Text>
-          </Pressable>
         </View>
       </ScrollView>
-      <Modal
-        animationType="fade"
-        onRequestClose={() => setShowLogoutConfirmation(false)}
-        transparent
-        visible={showLogoutConfirmation}
-      >
-        <View style={styles.modalOverlay}>
-          <View accessibilityViewIsModal style={styles.modalCard}>
-            <View style={styles.logoutConfirmationIcon}>
-              <Text style={styles.logoutConfirmationMark}>!</Text>
-            </View>
-            <Text style={styles.modalTitle}>Log Out?</Text>
-            <Text style={styles.modalMessage}>
-              Are you sure you want to log out of your account?
-            </Text>
-            <View style={styles.modalActions}>
-              <Pressable
-                accessibilityRole="button"
-                onPress={() => setShowLogoutConfirmation(false)}
-                style={styles.cancelButton}
-              >
-                <Text style={styles.cancelButtonText}>Cancel</Text>
-              </Pressable>
-              <Pressable
-                accessibilityRole="button"
-                onPress={logOut}
-                style={styles.confirmLogoutButton}
-              >
-                <Text style={styles.confirmLogoutText}>Log Out</Text>
-              </Pressable>
-            </View>
-          </View>
-        </View>
-      </Modal>
     </SafeAreaView>
   );
 }
@@ -213,7 +171,7 @@ function getInitials(fullName: string) {
     .split(/\s+/)
     .slice(0, 2)
     .map((part) => part.charAt(0).toUpperCase())
-    .join("");
+    .join('');
 }
 
 function NotificationSetting({
@@ -249,9 +207,7 @@ function NotificationSetting({
           disabled && styles.toggleDisabledInteraction,
         ]}
       >
-        <View
-          style={[styles.toggleThumb, enabled && styles.toggleThumbEnabled]}
-        />
+        <View style={[styles.toggleThumb, enabled && styles.toggleThumbEnabled]} />
       </Pressable>
     </View>
   );
@@ -263,7 +219,7 @@ function Icon({
   size,
 }: {
   color: string;
-  name: "bell" | "check" | "star";
+  name: 'bell' | 'check';
   size: number;
 }) {
   return (
@@ -273,130 +229,127 @@ function Icon({
       stroke={color}
       strokeLinecap="round"
       strokeLinejoin="round"
-      strokeWidth={name === "star" ? 1.8 : 2}
+      strokeWidth={2}
       viewBox="0 0 24 24"
       width={size}
     >
-      {name === "bell" ? (
+      {name === 'bell' ? (
         <>
           <Path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" />
           <Path d="M10 21h4" />
         </>
       ) : null}
-      {name === "check" ? <Path d="m5 12 4 4L19 6" /> : null}
-      {name === "star" ? (
-        <Path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-2.9-5.6 2.9 1.1-6.2L3 9.6l6.2-.9L12 3Z" />
-      ) : null}
+      {name === 'check' ? <Path d="m5 12 4 4L19 6" /> : null}
     </Svg>
   );
 }
 
 const styles = StyleSheet.create({
   safeArea: {
-    backgroundColor: "#fff7fb",
+    backgroundColor: '#fff7fb',
     flex: 1,
   },
   scrollContent: {
     paddingBottom: 112,
   },
   topBar: {
-    alignItems: "center",
-    flexDirection: "row",
+    alignItems: 'center',
+    flexDirection: 'row',
     height: 64,
-    justifyContent: "space-between",
+    justifyContent: 'space-between',
     paddingHorizontal: 20,
   },
   topBarSpacer: {
     minWidth: 40,
   },
   topBarTitle: {
-    color: "#020617",
+    color: '#020617',
     fontSize: 16,
-    fontWeight: "800",
+    fontWeight: '800',
     letterSpacing: -0.3,
   },
   topBarAction: {
-    alignItems: "flex-end",
+    alignItems: 'flex-end',
     minWidth: 40,
   },
   editButton: {
-    backgroundColor: "#fdf2f8",
+    backgroundColor: '#fdf2f8',
     borderRadius: 999,
     paddingHorizontal: 12,
     paddingVertical: 8,
   },
   editButtonText: {
-    color: "#be185d",
+    color: '#be185d',
     fontSize: 12,
-    fontWeight: "800",
+    fontWeight: '800',
   },
   content: {
     paddingHorizontal: 20,
     paddingTop: 8,
   },
   profileCard: {
-    backgroundColor: "#be185d",
+    backgroundColor: '#be185d',
     borderRadius: 32,
     elevation: 12,
-    overflow: "hidden",
+    overflow: 'hidden',
     padding: 24,
-    shadowColor: "#fbcfe8",
+    shadowColor: '#fbcfe8',
     shadowOffset: { width: 0, height: 12 },
     shadowOpacity: 0.35,
     shadowRadius: 16,
   },
   topDecoration: {
-    borderColor: "rgba(255, 255, 255, 0.05)",
+    borderColor: 'rgba(255, 255, 255, 0.05)',
     borderRadius: 999,
     borderWidth: 24,
     height: 160,
-    position: "absolute",
+    position: 'absolute',
     right: -40,
     top: -48,
     width: 160,
   },
   bottomDecoration: {
-    backgroundColor: "rgba(232, 121, 249, 0.1)",
+    backgroundColor: 'rgba(232, 121, 249, 0.1)',
     borderRadius: 999,
     bottom: -64,
     height: 128,
     left: 40,
-    position: "absolute",
+    position: 'absolute',
     width: 128,
   },
   profileInfo: {
-    alignItems: "center",
-    flexDirection: "row",
+    alignItems: 'center',
+    flexDirection: 'row',
     gap: 16,
   },
   avatarWrap: {
-    position: "relative",
+    position: 'relative',
   },
   avatar: {
-    alignItems: "center",
-    backgroundColor: "#fde68a",
-    borderColor: "#fff",
+    alignItems: 'center',
+    backgroundColor: '#fde68a',
+    borderColor: '#fff',
     borderRadius: 40,
     borderWidth: 2,
     height: 80,
-    justifyContent: "center",
+    justifyContent: 'center',
     width: 80,
   },
   avatarLabel: {
-    color: "#334155",
+    color: '#334155',
     fontSize: 10,
-    fontWeight: "800",
+    fontWeight: '800',
   },
   verifiedBadge: {
-    alignItems: "center",
-    backgroundColor: "#34d399",
-    borderColor: "#be185d",
+    alignItems: 'center',
+    backgroundColor: '#34d399',
+    borderColor: '#be185d',
     borderRadius: 12,
     borderWidth: 2,
     bottom: 0,
     height: 24,
-    justifyContent: "center",
-    position: "absolute",
+    justifyContent: 'center',
+    position: 'absolute',
     right: 0,
     width: 24,
   },
@@ -404,67 +357,45 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   memberName: {
-    color: "#fff",
+    color: '#fff',
     fontSize: 24,
-    fontWeight: "800",
+    fontWeight: '800',
     letterSpacing: -0.5,
   },
   memberPhone: {
-    color: "#fbcfe8",
+    color: '#fbcfe8',
     fontSize: 12,
-    fontWeight: "600",
+    fontWeight: '600',
     marginTop: 4,
-  },
-  memberEmail: {
-    color: "#fbcfe8",
-    fontSize: 11,
-    fontWeight: "500",
-    marginTop: 2,
-  },
-  rating: {
-    alignItems: "center",
-    flexDirection: "row",
-    gap: 4,
-    marginTop: 8,
-  },
-  ratingScore: {
-    color: "#fcd34d",
-    fontSize: 12,
-    fontWeight: "800",
-  },
-  trustedMember: {
-    color: "#fbcfe8",
-    fontSize: 12,
-    fontWeight: "500",
   },
   notificationSection: {
     marginVertical: 20,
   },
   sectionHeader: {
-    alignItems: "center",
-    flexDirection: "row",
+    alignItems: 'center',
+    flexDirection: 'row',
     gap: 8,
     marginBottom: 12,
   },
   bellIcon: {
-    alignItems: "center",
-    backgroundColor: "#fce7f3",
+    alignItems: 'center',
+    backgroundColor: '#fce7f3',
     borderRadius: 12,
     height: 32,
-    justifyContent: "center",
+    justifyContent: 'center',
     width: 32,
   },
   sectionTitle: {
-    color: "#020617",
+    color: '#020617',
     fontSize: 16,
-    fontWeight: "800",
+    fontWeight: '800',
   },
   settingsCard: {
-    backgroundColor: "#fff",
+    backgroundColor: '#fff',
     borderRadius: 24,
     elevation: 2,
-    overflow: "hidden",
-    shadowColor: "#0f172a",
+    overflow: 'hidden',
+    shadowColor: '#0f172a',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.06,
     shadowRadius: 4,
@@ -473,76 +404,76 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
   },
   preferencesError: {
-    color: "#b42354",
+    color: '#b42354',
     fontSize: 12,
     lineHeight: 18,
     paddingHorizontal: 16,
     paddingTop: 12,
   },
   settingRow: {
-    alignItems: "center",
-    flexDirection: "row",
+    alignItems: 'center',
+    flexDirection: 'row',
     gap: 16,
     padding: 16,
   },
   settingRowBorder: {
-    borderBottomColor: "#f1f5f9",
+    borderBottomColor: '#f1f5f9',
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
   settingCopy: {
     flex: 1,
   },
   settingLabel: {
-    color: "#0f172a",
+    color: '#0f172a',
     fontSize: 14,
-    fontWeight: "800",
+    fontWeight: '800',
   },
   settingDescription: {
-    color: "#94a3b8",
+    color: '#94a3b8',
     fontSize: 10,
-    fontWeight: "600",
+    fontWeight: '600',
     marginTop: 2,
   },
   toggle: {
     borderRadius: 14,
     height: 28,
-    justifyContent: "center",
+    justifyContent: 'center',
     padding: 4,
     width: 48,
   },
   toggleEnabled: {
-    backgroundColor: "#be185d",
+    backgroundColor: '#be185d',
   },
   toggleDisabled: {
-    backgroundColor: "#e2e8f0",
+    backgroundColor: '#e2e8f0',
   },
   toggleDisabledInteraction: {
     opacity: 0.6,
   },
   toggleThumb: {
-    backgroundColor: "#fff",
+    backgroundColor: '#fff',
     borderRadius: 10,
     height: 20,
-    shadowColor: "#0f172a",
+    shadowColor: '#0f172a',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.12,
     shadowRadius: 2,
     width: 20,
   },
   toggleThumbEnabled: {
-    alignSelf: "flex-end",
+    alignSelf: 'flex-end',
   },
   version: {
-    color: "#cbd5e1",
+    color: '#cbd5e1',
     fontSize: 10,
-    fontWeight: "700",
+    fontWeight: '700',
     marginTop: 32,
-    textAlign: "center",
+    textAlign: 'center',
   },
   logoutButton: {
-    alignItems: "center",
-    backgroundColor: "#fff",
-    borderColor: "#fecaca",
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    borderColor: '#fecaca',
     borderRadius: 16,
     borderWidth: 1,
     marginBottom: 8,
@@ -550,93 +481,93 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
   },
   logoutText: {
-    color: "#dc2626",
+    color: '#dc2626',
     fontSize: 14,
-    fontWeight: "800",
+    fontWeight: '800',
   },
   modalOverlay: {
-    alignItems: "center",
-    backgroundColor: "rgba(2, 6, 23, 0.3)",
+    alignItems: 'center',
+    backgroundColor: 'rgba(2, 6, 23, 0.3)',
     flex: 1,
-    justifyContent: "center",
+    justifyContent: 'center',
     paddingHorizontal: 20,
   },
   modalCard: {
-    alignItems: "center",
-    backgroundColor: "#fff",
+    alignItems: 'center',
+    backgroundColor: '#fff',
     borderRadius: 32,
     elevation: 16,
     padding: 24,
-    shadowColor: "#020617",
+    shadowColor: '#020617',
     shadowOffset: { width: 0, height: 10 },
     shadowOpacity: 0.18,
     shadowRadius: 20,
-    width: "100%",
+    width: '100%',
   },
   logoutConfirmationIcon: {
-    alignItems: "center",
-    backgroundColor: "#fef2f2",
+    alignItems: 'center',
+    backgroundColor: '#fef2f2',
     borderRadius: 28,
     height: 56,
-    justifyContent: "center",
+    justifyContent: 'center',
     width: 56,
   },
   logoutConfirmationMark: {
-    color: "#dc2626",
+    color: '#dc2626',
     fontSize: 28,
-    fontWeight: "800",
+    fontWeight: '800',
   },
   modalTitle: {
-    color: "#020617",
+    color: '#020617',
     fontSize: 20,
-    fontWeight: "800",
+    fontWeight: '800',
     letterSpacing: -0.4,
     marginTop: 20,
-    textAlign: "center",
+    textAlign: 'center',
   },
   modalMessage: {
-    color: "#64748b",
+    color: '#64748b',
     fontSize: 14,
-    fontWeight: "500",
+    fontWeight: '500',
     lineHeight: 24,
     marginTop: 12,
-    textAlign: "center",
+    textAlign: 'center',
   },
   modalActions: {
-    flexDirection: "row",
+    flexDirection: 'row',
     gap: 12,
     marginTop: 28,
-    width: "100%",
+    width: '100%',
   },
   cancelButton: {
-    alignItems: "center",
-    backgroundColor: "#fff",
-    borderColor: "#e2e8f0",
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    borderColor: '#e2e8f0',
     borderRadius: 16,
     borderWidth: 1,
     flex: 1,
     paddingVertical: 14,
   },
   cancelButtonText: {
-    color: "#334155",
+    color: '#334155',
     fontSize: 14,
-    fontWeight: "800",
+    fontWeight: '800',
   },
   confirmLogoutButton: {
-    alignItems: "center",
-    backgroundColor: "#dc2626",
+    alignItems: 'center',
+    backgroundColor: '#dc2626',
     borderRadius: 16,
     elevation: 4,
     flex: 1,
     paddingVertical: 14,
-    shadowColor: "#fee2e2",
+    shadowColor: '#fee2e2',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.8,
     shadowRadius: 7,
   },
   confirmLogoutText: {
-    color: "#fff",
+    color: '#fff',
     fontSize: 14,
-    fontWeight: "800",
+    fontWeight: '800',
   },
 });
