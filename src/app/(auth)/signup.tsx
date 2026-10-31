@@ -44,7 +44,7 @@ export default function SignupScreen() {
     }
 
     if (password.length < 8) {
-      setError('Password must contain at least 8 characters.');
+      setError("Password must contain at least 8 characters.");
       return;
     }
 
@@ -138,7 +138,7 @@ export default function SignupScreen() {
               <Text style={styles.label}>PASSWORD</Text>
               <TextInput
                 accessibilityLabel="Password"
-                autoComplete="new-password"
+                autoComplete="off"
                 onChangeText={setPassword}
                 onSubmitEditing={createAccount}
                 placeholder="At least 8 characters"
@@ -146,9 +146,12 @@ export default function SignupScreen() {
                 returnKeyType="done"
                 secureTextEntry
                 style={styles.input}
+                textContentType="oneTimeCode"
                 value={password}
               />
-              <Text style={styles.passwordHint}>Use at least 8 characters.</Text>
+              <Text style={styles.passwordHint}>
+                Use at least 8 characters.
+              </Text>
             </View>
           </View>
 
