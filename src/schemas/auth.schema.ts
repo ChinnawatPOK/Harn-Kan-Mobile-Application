@@ -1,23 +1,24 @@
 export type User = {
   id: string;
   name: string;
-  phoneNumber: string;
+  phoneNumber?: string;
 };
 
 export type LoginResult = {
-  accessToken: string;
-  tokenType: string;
+  token: string;
   user: User;
 };
 
 export type RegisterResult = {
+  token: string;
   user: User;
 };
 
 export type RegisterInput = {
-  name: string;
+  fullName: string;
   phoneNumber: string;
   password: string;
+  acceptedTerms: true;
 };
 
 export type LoginInput = {

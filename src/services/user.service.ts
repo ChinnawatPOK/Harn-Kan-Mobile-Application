@@ -18,7 +18,14 @@ export async function updateCurrentUserProfile(
 ): Promise<UserProfile> {
   const { data } = await apiClient.put<ApiResponse<UserProfile>>(
     endpoints.users.me,
-    input,
+    {
+      name: input.name,
+      phone_number: input.phoneNumber,
+    },
   );
   return data.data;
+}
+
+export async function deactivateCurrentUser(): Promise<void> {
+  await apiClient.delete(endpoints.users.deactivate);
 }

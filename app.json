@@ -33,7 +33,13 @@
           "imageWidth": 76
         }
       ],
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Allow Harn Kan to use your location when creating a deal."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

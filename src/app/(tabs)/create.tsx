@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { useRouter, type Href } from 'expo-router';
+import * as Location from 'expo-location';
 import {
+  ActivityIndicator,
   Modal,
   Pressable,
   ScrollView,
@@ -12,44 +14,124 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Circle, Path } from 'react-native-svg';
 
+import { getErrorMessage } from '@/api/errors';
+import { useCreateDeal } from '@/hooks/useCreateDeal';
+import { useAuth } from '@/hooks/useAuth';
+
 const categories = ['Food', 'Drink'] as const;
+const apiCategory = { Food: 'FOOD', Drink: 'DRINK' } as const;
 const expirationOptions = ['30 minutes', '1 hour', '2 hours'] as const;
+const expirationMinutes: Record<(typeof expirationOptions)[number], number> = {
+  '30 minutes': 30,
+  '1 hour': 60,
+  '2 hours': 120,
+};
 
 export default function CreateTab() {
   const router = useRouter();
+  const { accessToken } = useAuth();
+  const createDealMutation = useCreateDeal();
   const [people, setPeople] = useState(4);
   const [name, setName] = useState('Family-sized pizza bundle');
   const [price, setPrice] = useState('760');
   const [category, setCategory] = useState<(typeof categories)[number]>('Food');
   const [pickupLocation, setPickupLocation] = useState('');
   const [locationError, setLocationError] = useState('');
+  const [locationCoordinates, setLocationCoordinates] = useState<{
+    latitude: number;
+    longitude: number;
+  } | null>(null);
+  const [isLocating, setIsLocating] = useState(false);
   const [details, setDetails] = useState('');
   const [expiresIn, setExpiresIn] =
     useState<(typeof expirationOptions)[number]>('30 minutes');
   const [showExpirationOptions, setShowExpirationOptions] = useState(false);
   const [showCreateConfirmation, setShowCreateConfirmation] = useState(false);
   const [focusedField, setFocusedField] = useState<string | null>(null);
+  const [createError, setCreateError] = useState('');
 
   const numericPrice = Number(price);
   const perPerson =
     price && people && Number.isFinite(numericPrice)
       ? Math.ceil(numericPrice / people)
       : 0;
-  const canCreateDeal = Boolean(name.trim() && numericPrice > 0);
+  const canCreateDeal = Boolean(
+    name.trim() &&
+      numericPrice > 0 &&
+      Number.isFinite(numericPrice) &&
+      pickupLocation.trim() &&
+      locationCoordinates,
+  );
 
-  const confirmCreateDeal = () => {
-    if (!canCreateDeal) return;
-    const params = new URLSearchParams({
-      name: name.trim(),
-      category,
-      price,
-      people: String(people),
-      expiresIn,
-      pickupLocation: pickupLocation.trim(),
-      details: details.trim(),
-    });
-    setShowCreateConfirmation(false);
-    router.push(`/deal/1?${params.toString()}` as Href);
+  const handleUseCurrentLocation = async () => {
+    setLocationError('');
+    setIsLocating(true);
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        setLocationError('Location permission is required to create a deal.');
+        return;
+      }
+
+      const { coords } = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+      });
+      setLocationCoordinates({
+        latitude: coords.latitude,
+        longitude: coords.longitude,
+      });
+      setPickupLocation((current) =>
+        current.trim() ||
+        `${coords.latitude.toFixed(5)}, ${coords.longitude.toFixed(5)}`,
+      );
+    } catch (error: unknown) {
+      setLocationError(
+        getErrorMessage(error, "Couldn't get your location. Please try again."),
+      );
+    } finally {
+      setIsLocating(false);
+    }
+  };
+
+  const confirmCreateDeal = async () => {
+    if (!canCreateDeal || !locationCoordinates || createDealMutation.isPending) {
+      return;
+    }
+    if (!accessToken) {
+      setCreateError('Please log in before creating a deal.');
+      setShowCreateConfirmation(false);
+      router.replace('/(auth)/login');
+      return;
+    }
+
+    setCreateError('');
+    try {
+      const deal = await createDealMutation.mutateAsync({
+        dealName: name.trim(),
+        category: apiCategory[category],
+        pickupLocation: pickupLocation.trim(),
+        ...locationCoordinates,
+        details: details.trim() || undefined,
+        totalPrice: numericPrice,
+        targetSlots: people,
+        expiresInMinutes: expirationMinutes[expiresIn],
+      });
+      setShowCreateConfirmation(false);
+      const params = new URLSearchParams({
+        name: name.trim(),
+        category,
+        price,
+        people: String(people),
+        expiresIn,
+        pickupLocation: pickupLocation.trim(),
+        details: details.trim(),
+      });
+      router.push(`/deal/${encodeURIComponent(deal.id)}?${params.toString()}` as Href);
+    } catch (error: unknown) {
+      setCreateError(
+        getErrorMessage(error, "Couldn't create the deal. Please try again."),
+      );
+    }
   };
 
   return (
@@ -153,10 +235,7 @@ export default function CreateTab() {
               <TextInput
                 accessibilityLabel="Pickup location"
                 onBlur={() => setFocusedField(null)}
-                onChangeText={(value) => {
-                  setPickupLocation(value);
-                  setLocationError('');
-                }}
+                onChangeText={setPickupLocation}
                 onFocus={() => setFocusedField('location')}
                 placeholder="Enter pickup location"
                 placeholderTextColor="#cbd5e1"
@@ -167,17 +246,32 @@ export default function CreateTab() {
               <Pressable
                 accessibilityLabel="Use current location"
                 accessibilityRole="button"
-                onPress={() =>
-                  setLocationError(
-                    'Current location is not available. Please enter it manually.',
-                  )
-                }
+                accessibilityState={{ disabled: isLocating }}
+                disabled={isLocating}
+                onPress={() => void handleUseCurrentLocation()}
                 style={styles.locationAction}
               >
-                <Icon color="#db2777" name="location" size={15} />
-                <Text style={styles.locationActionText}>Use current location</Text>
+                {isLocating ? (
+                  <ActivityIndicator color="#db2777" size="small" />
+                ) : (
+                  <Icon color="#db2777" name="location" size={15} />
+                )}
+                <Text style={styles.locationActionText}>
+                  {isLocating ? 'Getting location...' : 'Use current location'}
+                </Text>
               </Pressable>
             </View>
+            {!locationCoordinates && !locationError ? (
+              <Text style={styles.locationHint}>
+                Use your current location to set the required map coordinates.
+              </Text>
+            ) : null}
+            {locationCoordinates ? (
+              <Text style={styles.locationHint}>
+                Coordinates set: {locationCoordinates.latitude.toFixed(5)},{' '}
+                {locationCoordinates.longitude.toFixed(5)}
+              </Text>
+            ) : null}
             {locationError ? (
               <Text accessibilityRole="alert" style={styles.locationError}>
                 {locationError}
@@ -355,17 +449,30 @@ export default function CreateTab() {
             </ScrollView>
             <Pressable
               accessibilityRole="button"
-              disabled={!canCreateDeal}
+              disabled={!canCreateDeal || createDealMutation.isPending}
               onPress={confirmCreateDeal}
               style={[
                 styles.confirmCreateButton,
-                !canCreateDeal && styles.confirmCreateButtonDisabled,
+                (!canCreateDeal || createDealMutation.isPending) &&
+                  styles.confirmCreateButtonDisabled,
               ]}
             >
-              <Text style={styles.confirmCreateText}>Confirm & Create Deal</Text>
+              {createDealMutation.isPending ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.confirmCreateText}>
+                  Confirm & Create Deal
+                </Text>
+              )}
             </Pressable>
+            {createError ? (
+              <Text accessibilityRole="alert" style={styles.locationError}>
+                {createError}
+              </Text>
+            ) : null}
             <Pressable
               accessibilityRole="button"
+              disabled={createDealMutation.isPending}
               onPress={() => setShowCreateConfirmation(false)}
               style={styles.editDetailsButton}
             >
@@ -619,6 +726,12 @@ const styles = StyleSheet.create({
     color: '#be185d',
     fontSize: 12,
     fontWeight: '600',
+    marginTop: 8,
+  },
+  locationHint: {
+    color: '#64748b',
+    fontSize: 11,
+    fontWeight: '500',
     marginTop: 8,
   },
   detailsInput: {

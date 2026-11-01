@@ -100,9 +100,23 @@ export default function ProfileTab() {
             </View>
           </View>
           {profileError ? (
-            <Text accessibilityRole="alert" style={styles.preferencesError}>
-              {profileError}
-            </Text>
+            <View style={styles.profileError}>
+              <Text accessibilityRole="alert" style={styles.preferencesError}>
+                {profileError}
+              </Text>
+              <Pressable
+                accessibilityRole="button"
+                disabled={profileQuery.isFetching}
+                onPress={() => {
+                  void profileQuery.refetch();
+                }}
+                style={styles.retryProfileButton}
+              >
+                <Text style={styles.editButtonText}>
+                  {profileQuery.isFetching ? 'Retrying…' : 'Try again'}
+                </Text>
+              </Pressable>
+            </View>
           ) : null}
 
           <View style={styles.notificationSection}>
@@ -409,6 +423,19 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     paddingHorizontal: 16,
     paddingTop: 12,
+  },
+  profileError: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 8,
+  },
+  retryProfileButton: {
+    backgroundColor: '#fdf2f8',
+    borderRadius: 999,
+    marginLeft: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
   },
   settingRow: {
     alignItems: 'center',

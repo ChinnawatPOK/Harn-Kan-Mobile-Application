@@ -16,7 +16,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { ApiError, getErrorMessage } from "@/api/errors";
 import { BrandMark } from "@/components/brand-mark";
 import { useAuth } from "@/hooks/useAuth";
-import { loginAccount, registerAccount } from "@/services/auth.service";
+import { registerAccount } from "@/services/auth.service";
 
 const colors = {
   ink: "#171321",
@@ -57,10 +57,12 @@ export default function SignupScreen() {
     setIsSubmitting(true);
     try {
       const credentials = { phoneNumber: phone.trim(), password };
-      await registerAccount({ name: fullName.trim(), ...credentials });
-      // Registration doesn't return a token, so sign in with the same credentials.
-      const { accessToken } = await loginAccount(credentials);
-      await saveAccessToken(accessToken);
+      const { token } = await registerAccount({
+        fullName: fullName.trim(),
+        ...credentials,
+        acceptedTerms: true,
+      });
+      await saveAccessToken(token);
       router.replace("/(tabs)");
     } catch (requestError: unknown) {
       if (

@@ -49,7 +49,7 @@ export default function LoginScreen() {
         phoneNumber: phoneNumber.trim(),
         password,
       });
-      await saveAccessToken(result.accessToken);
+      await saveAccessToken(result.token);
       router.replace("/(tabs)");
     } catch (requestError: unknown) {
       if (

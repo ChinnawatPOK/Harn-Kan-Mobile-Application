@@ -1,6 +1,7 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { useRouter } from 'expo-router';
 import {
+  ActivityIndicator,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -13,83 +14,35 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
 
 import { BrandMark } from '@/components/brand-mark';
+import { useAuth } from '@/hooks/useAuth';
+import { useNearbyDeals } from '@/hooks/useNearbyDeals';
+import type { DealCategory, NearbyDeal } from '@/types/deal.types';
 
 type Category = 'All' | 'Food' | 'Drink';
 
-type Deal = {
-  id: number;
-  category: Exclude<Category, 'All'>;
-  title: string;
-  subtitle: string;
-  price: string;
-  joined: string;
-  distance: string;
-  timeLeft: string;
-  emoji: string;
-  tint: string;
-  initials: string[];
-};
-
-const deals: Deal[] = [
-  {
-    id: 1,
-    category: 'Food',
-    title: 'Katsu & Co.',
-    subtitle: 'Japanese comfort food',
-    price: '฿189',
-    joined: '2 of 4 joined',
-    distance: '350 m',
-    timeLeft: '12 min',
-    emoji: '🍱',
-    tint: '#fff0f6',
-    initials: ['PL', 'NR'],
-  },
-  {
-    id: 2,
-    category: 'Drink',
-    title: 'Ari Coffee Club',
-    subtitle: 'Iced latte bottle set',
-    price: '฿125',
-    joined: '3 of 5 joined',
-    distance: '600 m',
-    timeLeft: '18 min',
-    emoji: '🧋',
-    tint: '#fff3ec',
-    initials: ['KA', 'MO', 'JI'],
-  },
-  {
-    id: 3,
-    category: 'Food',
-    title: 'Weekend snack box',
-    subtitle: '12 imported treats',
-    price: '฿99',
-    joined: '1 of 4 joined',
-    distance: '1.2 km',
-    timeLeft: '24 min',
-    emoji: '🍪',
-    tint: '#fff5e9',
-    initials: ['AN'],
-  },
-];
-
 const categories: Category[] = ['All', 'Food', 'Drink'];
+const dealCategoryByFilter: Record<Category, DealCategory | undefined> = {
+  All: undefined,
+  Food: 'FOOD',
+  Drink: 'DRINK',
+};
 const pink = '#d82f78';
+const exploreLocation = { lat: 13.78, lng: 100.54 };
 
 export default function HomeScreen() {
   const router = useRouter();
+  const { accessToken, isRestoring } = useAuth();
   const [category, setCategory] = useState<Category>('All');
   const [search, setSearch] = useState('');
-
-  const visibleDeals = useMemo(() => {
-    const query = search.trim().toLocaleLowerCase();
-    return deals.filter((deal) => {
-      const matchesCategory = category === 'All' || deal.category === category;
-      const matchesSearch =
-        !query ||
-        `${deal.title} ${deal.subtitle} ${deal.category}`.toLocaleLowerCase().includes(query);
-      return matchesCategory && matchesSearch;
-    });
-  }, [category, search]);
+  const dealsQuery = useNearbyDeals({
+    ...exploreLocation,
+    radius: 500,
+    category: dealCategoryByFilter[category],
+    q: search.trim() || undefined,
+  });
+  const visibleDeals = dealsQuery.data?.items ?? [];
+  const isLoading = isRestoring || (Boolean(accessToken) && dealsQuery.isPending);
+  const now = dealsQuery.dataUpdatedAt || null;
 
   return (
     <SafeAreaView edges={['top']} style={styles.safeArea}>
@@ -177,15 +130,59 @@ export default function HomeScreen() {
 
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Nearby</Text>
-          <Text style={styles.sectionCaption}>{visibleDeals.length} deals</Text>
+          {dealsQuery.data ? (
+            <Text style={styles.sectionCaption}>
+              {dealsQuery.data.total} deals
+            </Text>
+          ) : null}
         </View>
 
-        {visibleDeals.length > 0 ? (
+        {isLoading ? (
+          <View style={styles.statusState}>
+            <ActivityIndicator color={pink} />
+            <Text style={styles.statusMessage}>Loading nearby deals...</Text>
+          </View>
+        ) : !accessToken ? (
+          <View style={styles.emptyState}>
+            <Text style={styles.emptyTitle}>Log in to explore deals</Text>
+            <Text style={styles.emptyMessage}>
+              Sign in to see deals shared by people nearby.
+            </Text>
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => router.replace('/(auth)/login')}
+              style={styles.retryButton}
+            >
+              <Text style={styles.retryButtonText}>Log in</Text>
+            </Pressable>
+          </View>
+        ) : dealsQuery.isError ? (
+          <View style={styles.emptyState}>
+            <Text accessibilityRole="alert" style={styles.emptyTitle}>
+              Could not load deals
+            </Text>
+            <Text style={styles.emptyMessage}>
+              {dealsQuery.error instanceof Error
+                ? dealsQuery.error.message
+                : 'Please try again.'}
+            </Text>
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => {
+                void dealsQuery.refetch();
+              }}
+              style={styles.retryButton}
+            >
+              <Text style={styles.retryButtonText}>Try again</Text>
+            </Pressable>
+          </View>
+        ) : visibleDeals.length > 0 ? (
           <View style={styles.dealList}>
             {visibleDeals.map((deal) => (
               <DealCard
                 deal={deal}
                 key={deal.id}
+                now={now}
                 onPress={() => router.push('/deal/joiner')}
               />
             ))}
@@ -201,31 +198,47 @@ export default function HomeScreen() {
   );
 }
 
-function DealCard({ deal, onPress }: { deal: Deal; onPress: () => void }) {
+function DealCard({
+  deal,
+  now,
+  onPress,
+}: {
+  deal: NearbyDeal;
+  now: number | null;
+  onPress: () => void;
+}) {
+  const isFood = deal.category === 'FOOD';
   return (
     <Pressable
-      accessibilityLabel={`Open deal: ${deal.title}`}
+      accessibilityLabel={`Open deal: ${deal.dealName}`}
       accessibilityRole="button"
       onPress={onPress}
       style={styles.dealCard}
     >
-      <View style={[styles.dealArtwork, { backgroundColor: deal.tint }]}>
-        <Text style={styles.dealEmoji}>{deal.emoji}</Text>
+      <View
+        style={[
+          styles.dealArtwork,
+          { backgroundColor: isFood ? '#fff0f6' : '#fff3ec' },
+        ]}
+      >
+        <Text style={styles.dealEmoji}>{isFood ? '🍱' : '🧋'}</Text>
       </View>
       <View style={styles.dealDetails}>
         <View style={styles.timeRow}>
           <Text style={styles.clockIcon}>◷</Text>
-          <Text style={styles.timeText}>{deal.timeLeft} left</Text>
+          <Text style={styles.timeText}>
+            {formatTimeLeft(deal.expiresAt, now)} left
+          </Text>
         </View>
         <Text numberOfLines={1} style={styles.dealTitle}>
-          {deal.title}
+          {deal.dealName}
         </Text>
         <Text numberOfLines={1} style={styles.dealSubtitle}>
-          {deal.subtitle}
+          {deal.details ?? ''}
         </Text>
         <View style={styles.joinedRow}>
           <View style={styles.avatarStack}>
-            {deal.initials.map((initial, index) => (
+            {deal.participantInitials.map((initial, index) => (
               <View
                 key={initial}
                 style={[
@@ -238,16 +251,37 @@ function DealCard({ deal, onPress }: { deal: Deal; onPress: () => void }) {
               </View>
             ))}
           </View>
-          <Text style={styles.joinedText}>{deal.joined}</Text>
+          <Text style={styles.joinedText}>
+            {deal.joinedSlots} of {deal.targetSlots} joined
+          </Text>
         </View>
       </View>
       <View style={styles.priceColumn}>
-        <Text style={styles.price}>{deal.price}</Text>
+        <Text style={styles.price}>฿{deal.pricePerSlot}</Text>
         <Text style={styles.perPerson}>per person</Text>
-        <Text style={styles.distance}>⌖ {deal.distance}</Text>
+        <Text style={styles.distance}>
+          ⌖ {formatDistance(deal.distanceMeters)}
+        </Text>
       </View>
     </Pressable>
   );
+}
+
+function formatTimeLeft(expiresAt: string, now: number | null) {
+  const expiresAtMs = Date.parse(expiresAt);
+  if (now === null || !Number.isFinite(expiresAtMs)) {
+    return '—';
+  }
+  const minutesLeft = Math.max(0, Math.ceil((expiresAtMs - now) / 60_000));
+  return minutesLeft < 60
+    ? `${minutesLeft} min`
+    : `${Math.ceil(minutesLeft / 60)} hr`;
+}
+
+function formatDistance(distanceMeters: number) {
+  return distanceMeters < 1000
+    ? `${Math.round(distanceMeters)} m`
+    : `${(distanceMeters / 1000).toFixed(1)} km`;
 }
 
 const styles = StyleSheet.create({
@@ -521,5 +555,28 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginTop: 5,
     textAlign: 'center',
+  },
+  statusState: {
+    alignItems: 'center',
+    minHeight: 150,
+    justifyContent: 'center',
+  },
+  statusMessage: {
+    color: '#898594',
+    fontSize: 12,
+    marginTop: 10,
+  },
+  retryButton: {
+    alignItems: 'center',
+    backgroundColor: pink,
+    borderRadius: 16,
+    marginTop: 14,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+  },
+  retryButtonText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '800',
   },
 });

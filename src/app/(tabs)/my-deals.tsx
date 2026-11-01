@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { useRouter, type Href } from 'expo-router';
+import { useRouter } from 'expo-router';
 import {
+  ActivityIndicator,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -9,8 +10,16 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Circle, Path } from 'react-native-svg';
+import { getErrorMessage } from '@/api/errors';
+import { useAuth } from '@/hooks/useAuth';
+import { useMyDeals } from '@/hooks/useMyDeals';
+import type {
+  DealCategory,
+  DealRole,
+  MyDeal,
+  MyDealsTab as DealListTab,
+} from '@/types/deal.types';
 
-type MainTab = 'created' | 'joined' | 'history';
 type Category = 'All' | 'Food' | 'Drink';
 type HistoryRole = 'All Roles' | 'Creator' | 'Participant';
 type HistoryStatus = 'All Status' | 'Completed' | 'Canceled' | 'Expired';
@@ -23,125 +32,27 @@ type DealStatus =
   | 'Waiting for Host'
   | 'Completed'
   | 'Canceled'
-  | 'Expired';
-
-type Deal = {
-  name: string;
-  category: Exclude<Category, 'All'>;
-  price: string;
-  date: string;
-  status: DealStatus;
-  role: Exclude<HistoryRole, 'All Roles'>;
-};
+  | 'Expired'
+  | 'Refunding'
+  | 'Refunded';
 
 const categories: Category[] = ['All', 'Food', 'Drink'];
 
-const createdDeals: Deal[] = [
-  {
-    name: 'Katsu & Co. group order',
-    category: 'Food',
-    price: '฿756',
-    date: 'Today, 12:30',
-    status: 'Waiting',
-    role: 'Creator',
-  },
-  {
-    name: 'Friday bubble tea run',
-    category: 'Drink',
-    price: '฿420',
-    date: 'Today, 16:45',
-    status: 'Ready to Order',
-    role: 'Creator',
-  },
-  {
-    name: 'Office lunch bundle',
-    category: 'Food',
-    price: '฿1,280',
-    date: '18 Jun, 11:00',
-    status: 'Waiting',
-    role: 'Creator',
-  },
-  {
-    name: 'Cold brew bottle set',
-    category: 'Drink',
-    price: '฿640',
-    date: 'Today, 17:30',
-    status: 'Ready to Order',
-    role: 'Creator',
-  },
-];
+const categoryByFilter: Record<Category, DealCategory | undefined> = {
+  All: undefined,
+  Food: 'FOOD',
+  Drink: 'DRINK',
+};
+const roleByFilter: Record<HistoryRole, DealRole | undefined> = {
+  'All Roles': undefined,
+  Creator: 'HOST',
+  Participant: 'PARTICIPANT',
+};
 
-const joinedDeals: Deal[] = [
-  {
-    name: 'Pizza night bundle',
-    category: 'Food',
-    price: '฿920',
-    date: 'Today, 18:30',
-    status: 'Paid',
-    role: 'Participant',
-  },
-  {
-    name: 'Matcha latte delivery',
-    category: 'Drink',
-    price: '฿360',
-    date: 'Today, 19:00',
-    status: 'Reserved',
-    role: 'Participant',
-  },
-  {
-    name: 'Weekend snack box',
-    category: 'Food',
-    price: '฿396',
-    date: 'Tomorrow, 14:15',
-    status: 'Waiting for Host',
-    role: 'Participant',
-  },
-  {
-    name: 'Fresh juice pack',
-    category: 'Drink',
-    price: '฿520',
-    date: 'Tomorrow, 08:30',
-    status: 'Paid',
-    role: 'Participant',
-  },
-];
-
-const historyDeals: Deal[] = [
-  {
-    name: 'Katsu & Co. group order',
-    category: 'Food',
-    price: '฿756',
-    date: '18 Jun, 12:30',
-    status: 'Completed',
-    role: 'Creator',
-  },
-  {
-    name: 'Ari Coffee Club',
-    category: 'Drink',
-    price: '฿500',
-    date: '15 Jun, 09:15',
-    status: 'Completed',
-    role: 'Participant',
-  },
-  {
-    name: 'Sunday pizza bundle',
-    category: 'Food',
-    price: '฿880',
-    date: '9 Jun, 18:40',
-    status: 'Canceled',
-    role: 'Creator',
-  },
-  {
-    name: 'Matcha bottle set',
-    category: 'Drink',
-    price: '฿420',
-    date: '2 Jun, 14:20',
-    status: 'Expired',
-    role: 'Participant',
-  },
-];
-
-const statusStyle: Record<DealStatus, { backgroundColor: string; color: string }> = {
+const statusStyle: Record<
+  DealStatus,
+  { backgroundColor: string; color: string }
+> = {
   Waiting: { backgroundColor: '#fffbeb', color: '#b45309' },
   Paid: { backgroundColor: '#ecfdf5', color: '#047857' },
   Closed: { backgroundColor: '#f1f5f9', color: '#64748b' },
@@ -151,11 +62,14 @@ const statusStyle: Record<DealStatus, { backgroundColor: string; color: string }
   Completed: { backgroundColor: '#ecfdf5', color: '#047857' },
   Canceled: { backgroundColor: '#fef2f2', color: '#dc2626' },
   Expired: { backgroundColor: '#f1f5f9', color: '#64748b' },
+  Refunding: { backgroundColor: '#fff7ed', color: '#c2410c' },
+  Refunded: { backgroundColor: '#ecfdf5', color: '#047857' },
 };
 
 export default function MyDealsTab() {
   const router = useRouter();
-  const [tab, setTab] = useState<MainTab>('joined');
+  const { accessToken, isRestoring } = useAuth();
+  const [tab, setTab] = useState<DealListTab>('joined');
   const [createdCategory, setCreatedCategory] = useState<Category>('All');
   const [joinedCategory, setJoinedCategory] = useState<Category>('All');
   const [historyCategory, setHistoryCategory] = useState<Category>('All');
@@ -168,17 +82,22 @@ export default function MyDealsTab() {
       : tab === 'joined'
         ? joinedCategory
         : historyCategory;
-  const deals = tab === 'created' ? createdDeals : tab === 'joined' ? joinedDeals : historyDeals;
-  const dealsToShow = deals.filter((deal) => {
-    const matchesCategory =
-      activeCategory === 'All' || deal.category === activeCategory;
-    if (tab !== 'history') return matchesCategory;
-    return (
-      matchesCategory &&
-      (historyRole === 'All Roles' || deal.role === historyRole) &&
-      (historyStatus === 'All Status' || deal.status === historyStatus)
-    );
+  const dealsQuery = useMyDeals({
+    tab,
+    category: categoryByFilter[activeCategory],
+    ...(tab === 'history' && roleByFilter[historyRole]
+      ? { role: roleByFilter[historyRole] }
+      : {}),
   });
+  const allDeals = dealsQuery.data?.pages.flatMap((page) => page.items) ?? [];
+  const dealsToShow =
+    tab === 'history' && historyStatus !== 'All Status'
+      ? allDeals.filter(
+          (deal) => getHistoryStatus(deal) === historyStatus,
+        )
+      : allDeals;
+  const totalDeals = dealsQuery.data?.pages[0]?.total ?? 0;
+  const isLoading = isRestoring || (Boolean(accessToken) && dealsQuery.isPending);
 
   const setCategory = (category: Category) => {
     if (tab === 'created') setCreatedCategory(category);
@@ -186,22 +105,11 @@ export default function MyDealsTab() {
     if (tab === 'history') setHistoryCategory(category);
   };
 
-  const openDeal = (deal: Deal) => {
-    let destination = '/deal/1';
-    if (tab === 'history') {
-      if (deal.status === 'Completed') destination = '/deal/completed';
-      if (deal.status === 'Canceled' || deal.status === 'Expired') {
-        destination = '/deal/refund';
-      }
-    } else if (deal.role === 'Participant' || tab === 'joined') {
-      destination =
-        deal.status === 'Paid' ? '/deal/post-payment' : '/deal/joiner';
-    } else if (deal.status === 'Closed') {
-      destination = '/deal/completed';
-    } else if (tab === 'created') {
-      destination = '/deal/1';
-    }
-    router.push(destination as Href);
+  const openDeal = (deal: MyDeal) => {
+    router.push({
+      pathname: '/deal/[id]',
+      params: { id: deal.id },
+    });
   };
 
   const sectionTitle =
@@ -253,8 +161,10 @@ export default function MyDealsTab() {
               <Text style={styles.sectionTitle}>{sectionTitle}</Text>
               <Text style={styles.sectionSubtitle}>
                 {tab === 'history'
-                  ? `${dealsToShow.length} past deals`
-                  : `${dealsToShow.length} active and recent deals`}
+                  ? historyStatus === 'All Status'
+                  ? `${totalDeals} past deals`
+                  : `${dealsToShow.length} shown`
+                  : `${totalDeals} active and recent deals`}
               </Text>
             </View>
             {tab === 'created' ? (
@@ -331,22 +241,106 @@ export default function MyDealsTab() {
           )}
 
           <View style={styles.dealList}>
-            {dealsToShow.map((deal, index) => (
-              <DealCard
-                deal={deal}
-                index={index}
-                key={`${tab}-${deal.name}`}
-                onPress={() => openDeal(deal)}
-                showReadiness={index === 0 && tab === 'created'}
-              />
-            ))}
-            {dealsToShow.length === 0 ? (
+            {isLoading ? (
+              <View style={styles.statusState}>
+                <ActivityIndicator color="#be185d" />
+                <Text style={styles.statusMessage}>Loading your deals...</Text>
+              </View>
+            ) : !accessToken ? (
+              <View style={styles.emptyState}>
+                <Text style={styles.emptyTitle}>Log in to view your deals</Text>
+                <Text style={styles.emptyMessage}>
+                  Sign in to see deals you created or joined.
+                </Text>
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => router.replace('/(auth)/login')}
+                  style={styles.retryButton}
+                >
+                  <Text style={styles.retryButtonText}>Log in</Text>
+                </Pressable>
+              </View>
+            ) : dealsQuery.isError && !dealsQuery.data ? (
+              <View style={styles.emptyState}>
+                <Text accessibilityRole="alert" style={styles.emptyTitle}>
+                  Could not load your deals
+                </Text>
+                <Text style={styles.emptyMessage}>
+                  {getErrorMessage(
+                    dealsQuery.error,
+                    'Please check your connection and try again.',
+                  )}
+                </Text>
+                <Pressable
+                  accessibilityRole="button"
+                  disabled={dealsQuery.isFetching}
+                  onPress={() => {
+                    void dealsQuery.refetch();
+                  }}
+                  style={styles.retryButton}
+                >
+                  <Text style={styles.retryButtonText}>
+                    {dealsQuery.isFetching ? 'Retrying…' : 'Try again'}
+                  </Text>
+                </Pressable>
+              </View>
+            ) : (
+              dealsToShow.map((deal) => (
+                <DealCard
+                  deal={deal}
+                  key={`${tab}-${deal.id}`}
+                  onPress={() => openDeal(deal)}
+                  showReadiness={tab === 'created'}
+                />
+              ))
+            )}
+            {!isLoading &&
+            !dealsQuery.isError &&
+            accessToken &&
+            dealsToShow.length === 0 ? (
               <View style={styles.emptyState}>
                 <Text style={styles.emptyTitle}>No deals found</Text>
                 <Text style={styles.emptyMessage}>
                   Try changing the selected filters.
                 </Text>
               </View>
+            ) : null}
+            {dealsQuery.isError && dealsQuery.data ? (
+              <View style={styles.loadMoreError}>
+                <Text accessibilityRole="alert" style={styles.loadMoreErrorText}>
+                  Could not load more deals.
+                </Text>
+                <Pressable
+                  accessibilityRole="button"
+                  disabled={dealsQuery.isFetching}
+                  onPress={() => {
+                    void dealsQuery.fetchNextPage();
+                  }}
+                  style={styles.retryButton}
+                >
+                  <Text style={styles.retryButtonText}>Try again</Text>
+                </Pressable>
+              </View>
+            ) : null}
+            {dealsQuery.hasNextPage &&
+            !dealsQuery.isError &&
+            !dealsQuery.isFetchingNextPage ? (
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => {
+                  void dealsQuery.fetchNextPage();
+                }}
+                style={styles.loadMoreButton}
+              >
+                <Text style={styles.loadMoreText}>Load more deals</Text>
+              </Pressable>
+            ) : null}
+            {dealsQuery.isFetchingNextPage ? (
+              <ActivityIndicator
+                accessibilityLabel="Loading more deals"
+                color="#be185d"
+                style={styles.loadMoreIndicator}
+              />
             ) : null}
           </View>
         </View>
@@ -392,16 +386,17 @@ function FilterChip({
 
 function DealCard({
   deal,
-  index,
   onPress,
   showReadiness,
 }: {
-  deal: Deal;
-  index: number;
+  deal: MyDeal;
   onPress: () => void;
   showReadiness: boolean;
 }) {
-  const badgeStyle = statusStyle[deal.status];
+  const status = getDisplayStatus(deal);
+  const badgeStyle = statusStyle[status];
+  const category = deal.category === 'FOOD' ? 'Food' : 'Drink';
+  const role = deal.myRole === 'HOST' ? 'Creator' : 'Participant';
   return (
     <Pressable
       accessibilityRole="button"
@@ -415,14 +410,14 @@ function DealCard({
         <View style={styles.dealIcon}>
           <Icon
             color="#db2777"
-            name={deal.category === 'Food' ? 'food' : 'ticket'}
+            name={deal.category === 'FOOD' ? 'food' : 'ticket'}
             size={21}
           />
         </View>
         <View style={styles.dealSummary}>
           <View style={styles.dealTitleRow}>
             <Text numberOfLines={1} style={styles.dealName}>
-              {deal.name}
+              {deal.dealName}
             </Text>
             <View
               style={[
@@ -431,33 +426,89 @@ function DealCard({
               ]}
             >
               <Text style={[styles.statusText, { color: badgeStyle.color }]}>
-                {deal.status}
+                {status}
               </Text>
             </View>
           </View>
           <View style={styles.dealMeta}>
             <View style={styles.categoryTag}>
-              <Text style={styles.categoryTagText}>{deal.category}</Text>
+              <Text style={styles.categoryTagText}>{category}</Text>
             </View>
             <View style={styles.roleTag}>
-              <Text style={styles.roleTagText}>Role: {deal.role}</Text>
+              <Text style={styles.roleTagText}>Role: {role}</Text>
             </View>
-            <Text style={styles.dealDate}>{deal.date}</Text>
+            <Text style={styles.dealDate}>{formatDealDate(deal.expiresAt)}</Text>
           </View>
         </View>
       </View>
       <View style={styles.priceRow}>
         <Text style={styles.priceLabel}>TOTAL PRICE</Text>
-        <Text style={styles.priceValue}>{deal.price}</Text>
+        <Text style={styles.priceValue}>
+          ฿{deal.totalPrice.toLocaleString()}
+        </Text>
       </View>
       {showReadiness ? (
         <View style={styles.readinessRow}>
           <Icon color="#db2777" name="people" size={13} />
-          <Text style={styles.readinessText}>3 of 4 participants ready</Text>
+          <Text style={styles.readinessText}>
+            {deal.readySlots} of {deal.targetSlots} participants ready
+          </Text>
+        </View>
+      ) : null}
+      {deal.readyToOrder ? (
+        <View style={styles.readinessRow}>
+          <Text style={styles.readinessText}>Ready to Order</Text>
         </View>
       ) : null}
     </Pressable>
   );
+}
+
+function getHistoryStatus(deal: MyDeal): HistoryStatus {
+  const status = getDisplayStatus(deal);
+  if (status === 'Completed') return 'Completed';
+  if (status === 'Canceled') return 'Canceled';
+  if (status === 'Expired') return 'Expired';
+  return 'All Status';
+}
+
+function getDisplayStatus(deal: MyDeal): DealStatus {
+  if (deal.dealStatus === 'COMPLETED') return 'Completed';
+  if (deal.dealStatus === 'CANCELLED') return 'Canceled';
+  if (deal.dealStatus === 'EXPIRED') return 'Expired';
+
+  if (deal.myStatus === 'REFUND_PENDING') return 'Refunding';
+  if (deal.myStatus === 'REFUNDED') return 'Refunded';
+  if (deal.myStatus === 'FAILED') return 'Canceled';
+
+  if (deal.myRole === 'HOST') {
+    if (deal.readyToOrder) return 'Ready to Order';
+    return deal.dealStatus === 'LOCKED' ? 'Closed' : 'Waiting';
+  }
+
+  switch (deal.myStatus) {
+    case 'RESERVED':
+      return 'Reserved';
+    case 'PAYMENT_PENDING':
+      return 'Waiting';
+    case 'HELD':
+      return 'Paid';
+    case 'RECEIVED':
+      return 'Waiting for Host';
+    default:
+      return deal.dealStatus === 'LOCKED' ? 'Closed' : 'Waiting';
+  }
+}
+
+function formatDealDate(value: string) {
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return '—';
+  return date.toLocaleString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
 }
 
 function Icon({
@@ -763,6 +814,54 @@ const styles = StyleSheet.create({
     color: '#db2777',
     fontSize: 10,
     fontWeight: '700',
+  },
+  statusState: {
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    borderRadius: 24,
+    minHeight: 140,
+    justifyContent: 'center',
+  },
+  statusMessage: {
+    color: '#94a3b8',
+    fontSize: 12,
+    marginTop: 10,
+  },
+  retryButton: {
+    alignItems: 'center',
+    backgroundColor: '#be185d',
+    borderRadius: 999,
+    marginTop: 14,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+  },
+  retryButtonText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  loadMoreButton: {
+    alignItems: 'center',
+    backgroundColor: '#fce7f3',
+    borderRadius: 16,
+    marginTop: 4,
+    paddingVertical: 14,
+  },
+  loadMoreText: {
+    color: '#be185d',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  loadMoreError: {
+    alignItems: 'center',
+    paddingVertical: 12,
+  },
+  loadMoreErrorText: {
+    color: '#b42354',
+    fontSize: 12,
+  },
+  loadMoreIndicator: {
+    paddingVertical: 12,
   },
   emptyState: {
     alignItems: 'center',

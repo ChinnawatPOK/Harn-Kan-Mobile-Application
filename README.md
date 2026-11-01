@@ -27,6 +27,14 @@ address reachable from your app:
 Start the User Service and Gateway before submitting the form. See
 `../Harn-Kan-Gateway/README.md` for Gateway setup.
 
+## REST API clients
+
+The typed clients in `src/services/` follow the mobile-facing contracts in
+`../API Design/api-design.md`. Deal and payment requests use the shared
+Axios client, which adds the saved bearer token and converts API keys between
+camelCase and snake_case. The Deal and Payment services and their Gateway
+routes must be running before those screens can load live data.
+
 ## Checks
 
 ```bash

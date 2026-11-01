@@ -2,7 +2,7 @@ import { isAxiosError, type AxiosInstance } from "axios";
 
 import { ApiError, toApiError } from "@/api/errors";
 import { useAuthStore } from "@/stores/auth.store";
-import { camelCaseKeys, snakeCaseKeys } from "@/utils/case";
+import { camelCaseKeys } from "@/utils/case";
 
 const getApiBaseUrl = () => {
   const baseUrl = process.env.EXPO_PUBLIC_API_BASE_URL?.replace(/\/+$/, "");
@@ -21,8 +21,6 @@ export function attachInterceptors(client: AxiosInstance) {
       config.headers.set("Authorization", `Bearer ${accessToken}`);
     }
 
-    config.data = snakeCaseKeys(config.data);
-    config.params = snakeCaseKeys(config.params);
     return config;
   });
 

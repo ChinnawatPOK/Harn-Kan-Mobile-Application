@@ -6,22 +6,21 @@ import type {
   RegisterInput,
   RegisterResult,
 } from "@/schemas/auth.schema";
-import type { ApiResponse } from "@/types/api.types";
 
 export async function registerAccount(
   input: RegisterInput,
 ): Promise<RegisterResult> {
-  const { data } = await apiClient.post<ApiResponse<RegisterResult>>(
+  const { data } = await apiClient.post<RegisterResult>(
     endpoints.auth.register,
     input,
   );
-  return data.data;
+  return data;
 }
 
 export async function loginAccount(input: LoginInput): Promise<LoginResult> {
-  const { data } = await apiClient.post<ApiResponse<LoginResult>>(
+  const { data } = await apiClient.post<LoginResult>(
     endpoints.auth.login,
     input,
   );
-  return data.data;
+  return data;
 }
