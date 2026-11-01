@@ -106,6 +106,22 @@ export default function MyDealsTab() {
   };
 
   const openDeal = (deal: MyDeal) => {
+    if (deal.dealStatus === 'COMPLETED') {
+      router.push({
+        pathname: '/deal/completed',
+        params: { id: deal.id },
+      });
+      return;
+    }
+
+    if (deal.dealStatus === 'CANCELLED' || deal.dealStatus === 'EXPIRED') {
+      router.push({
+        pathname: '/deal/refund',
+        params: { id: deal.id },
+      });
+      return;
+    }
+
     router.push({
       pathname: '/deal/[id]',
       params: { id: deal.id },

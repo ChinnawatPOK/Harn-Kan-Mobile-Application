@@ -18,5 +18,5 @@ export type Payment = {
 export type StartPaymentResult = {
   paymentId: string;
   status: "PAYMENT_PENDING";
-  clientSecret?: string | null;
+  clientSecret: string;
 };

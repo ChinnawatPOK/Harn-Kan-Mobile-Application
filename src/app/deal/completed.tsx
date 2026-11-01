@@ -1,4 +1,4 @@
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import {
   Pressable,
   ScrollView,
@@ -10,16 +10,37 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
 
 import { BrandMark } from '@/components/brand-mark';
-
-const participants = [
-  { name: 'Ploy S.', detail: 'Host', initials: 'PL' },
-  { name: 'Narin K.', detail: 'Participant', initials: 'NR' },
-  { name: 'Anya P.', detail: 'Participant', initials: 'AP' },
-  { name: 'You', detail: 'Participant', initials: 'YO' },
-];
+import { DealApiState } from '@/components/deal-api-state';
+import {
+  useDealDetails,
+  useDealReceipt,
+} from '@/hooks/useDealDetails';
+import type { DealParticipantStatus } from '@/types/deal.types';
 
 export default function CompletedDealScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ id?: string | string[] }>();
+  const dealId = firstParam(params.id);
+  const dealQuery = useDealDetails(dealId);
+  const deal = dealQuery.data;
+  const receiptQuery = useDealReceipt(
+    deal?.status === 'COMPLETED' ? deal.id : undefined,
+  );
+
+  if (!dealId) {
+    return <DealApiState message="This deal link is missing its ID." />;
+  }
+
+  if (!deal) {
+    return (
+      <DealApiState
+        isLoading={dealQuery.isLoading}
+        message={dealQuery.error?.message ?? 'Could not load this deal. Sign in and try again.'}
+        onRetry={() => void dealQuery.refetch()}
+      />
+    );
+  }
+  const receipt = receiptQuery.data;
 
   return (
     <SafeAreaView edges={['top', 'bottom']} style={styles.safeArea}>
@@ -46,68 +67,130 @@ export default function CompletedDealScreen() {
           <View style={styles.dealCard}>
             <DealVisual compact />
             <View style={styles.dealInfo}>
-              <Text style={styles.categoryBadge}>Food</Text>
+              <Text style={styles.categoryBadge}>{categoryLabel(deal.category)}</Text>
               <Text numberOfLines={1} style={styles.dealName}>
-                Katsu &amp; Co. group order
+                {deal.dealName}
               </Text>
               <Text numberOfLines={1} style={styles.dealDescription}>
-                Chicken katsu set + gyoza bundle
+                {deal.details || deal.pickupLocation}
               </Text>
-              <Text style={styles.dealPrice}>฿756 total</Text>
+              <Text style={styles.dealPrice}>
+                ฿{deal.totalPrice.toLocaleString()} total
+              </Text>
             </View>
           </View>
 
-          <View style={styles.successBanner}>
-            <View style={styles.successIcon}>
-              <Icon color="#fff" name="check" size={23} />
+          {deal.status === 'COMPLETED' ? (
+            <View style={styles.successBanner}>
+              <View style={styles.successIcon}>
+                <Icon color="#fff" name="check" size={23} />
+              </View>
+              <View style={styles.successCopy}>
+                <Text style={styles.successTitle}>Deal Completed</Text>
+                <Text style={styles.successDescription}>
+                  {receipt
+                    ? `Receipt ${receipt.receiptNo} · ${new Date(receipt.completedAt).toLocaleString()}`
+                    : 'Loading the official receipt…'}
+                </Text>
+              </View>
             </View>
-            <View style={styles.successCopy}>
-              <Text style={styles.successTitle}>Deal Completed</Text>
-              <Text style={styles.successDescription}>
-                Successfully shared and paid!
+          ) : (
+            <View style={styles.receiptError}>
+              <Text style={styles.receiptErrorText}>
+                Deal status: {deal.status}. The receipt becomes available after completion.
               </Text>
             </View>
-          </View>
+          )}
+
+          {receipt ? (
+            <View style={styles.receiptCard}>
+              <Text style={styles.receiptHeading}>Receipt {receipt.receiptNo}</Text>
+              {receipt.lines.map((line, index) => (
+                <View key={`${line.role}-${line.name}-${index}`} style={styles.receiptLine}>
+                  <View style={styles.receiptLineInfo}>
+                    <Text style={styles.receiptName}>{line.name}</Text>
+                    <Text style={styles.receiptRole}>{line.role}</Text>
+                  </View>
+                  <Text style={styles.receiptAmount}>
+                    ฿{line.amount.toLocaleString()}
+                  </Text>
+                </View>
+              ))}
+              <View style={styles.receiptTotal}>
+                <Text style={styles.receiptHeading}>Payout to host</Text>
+                <Text style={styles.receiptAmount}>
+                  ฿{receipt.payoutToHost.toLocaleString()}
+                </Text>
+              </View>
+            </View>
+          ) : receiptQuery.isError ? (
+            <View style={styles.receiptError}>
+              <Text style={styles.successDescription}>
+                {receiptQuery.error.message}
+              </Text>
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => void receiptQuery.refetch()}
+                style={styles.receiptRetry}
+              >
+                <Text style={styles.receiptRetryText}>Retry receipt</Text>
+              </Pressable>
+            </View>
+          ) : null}
 
           <View style={styles.participantsSection}>
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>Participants</Text>
-              <Text style={styles.sectionCount}>4 of 4 slots</Text>
+              <Text style={styles.sectionCount}>
+                {deal.joinedSlots} of {deal.targetSlots} slots
+              </Text>
             </View>
             <View style={styles.participantCard}>
-              {participants.map((person, index) => (
+              {deal.participants.map((person, index) => (
                 <View
-                  key={person.name}
+                  key={`${person.userId}-${person.slotNo}`}
                   style={[
                     styles.participantRow,
-                    index < participants.length - 1 &&
+                    index < deal.participants.length - 1 &&
                       styles.participantRowBorder,
                   ]}
                 >
-                  <Avatar label={person.initials} current={person.name === 'You'} />
+                  <Avatar label={initialsFor(person.name)} current={false} />
                   <View style={styles.participantInfo}>
                     <Text style={styles.participantName}>{person.name}</Text>
-                    <Text style={styles.participantDetail}>{person.detail}</Text>
+                    <Text style={styles.participantDetail}>
+                      {person.role === 'HOST' ? 'Host' : `Slot ${person.slotNo}`} · {participantStatusLabel(person.status)}
+                    </Text>
                   </View>
-                  <View style={styles.paidBadge}>
-                    <Icon color="#047857" name="check" size={11} />
-                    <Text style={styles.paidBadgeText}>Paid</Text>
-                  </View>
+                  {person.status === 'HELD' || person.status === 'RECEIVED' ? (
+                    <View style={styles.paidBadge}>
+                      <Icon color="#047857" name="check" size={11} />
+                      <Text style={styles.paidBadgeText}>
+                        {participantStatusLabel(person.status)}
+                      </Text>
+                    </View>
+                  ) : null}
                 </View>
               ))}
+              {deal.participants.length === 0 ? (
+                <Text style={styles.participantDetail}>No participants recorded.</Text>
+              ) : null}
             </View>
           </View>
 
           <Pressable
             accessibilityRole="button"
-            onPress={() => {}}
+            disabled={!receipt || receiptQuery.isFetching}
+            onPress={() => void receiptQuery.refetch()}
             style={({ pressed }) => [
               styles.receiptButton,
               pressed && styles.pressed,
             ]}
           >
             <Icon color="#fff" name="ticket" size={18} />
-            <Text style={styles.receiptButtonText}>View Receipt</Text>
+            <Text style={styles.receiptButtonText}>
+              {receiptQuery.isFetching ? 'Refreshing…' : 'Refresh Receipt'}
+            </Text>
           </Pressable>
           <Pressable
             accessibilityRole="button"
@@ -120,6 +203,44 @@ export default function CompletedDealScreen() {
       </ScrollView>
     </SafeAreaView>
   );
+}
+
+function firstParam(value?: string | string[]) {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+function categoryLabel(category: string) {
+  return category === 'FOOD' ? 'Food' : 'Drink';
+}
+
+function initialsFor(name: string) {
+  return name
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part[0] ?? '')
+    .join('')
+    .toUpperCase();
+}
+
+function participantStatusLabel(status: DealParticipantStatus) {
+  switch (status) {
+    case 'HOST':
+      return 'Host';
+    case 'RESERVED':
+      return 'Reserved';
+    case 'PAYMENT_PENDING':
+      return 'Payment pending';
+    case 'HELD':
+      return 'Paid';
+    case 'RECEIVED':
+      return 'Received';
+    case 'FAILED':
+      return 'Left';
+    case 'REFUND_PENDING':
+      return 'Refund pending';
+    case 'REFUNDED':
+      return 'Refunded';
+  }
 }
 
 function DealVisual({ compact = false }: { compact?: boolean }) {
@@ -411,6 +532,71 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     marginTop: 4,
+  },
+  receiptCard: {
+    backgroundColor: '#fff',
+    borderColor: '#f1f5f9',
+    borderRadius: 20,
+    borderWidth: 1,
+    marginTop: 16,
+    padding: 16,
+  },
+  receiptHeading: {
+    color: '#0f172a',
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  receiptLine: {
+    alignItems: 'center',
+    borderBottomColor: '#f1f5f9',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+  },
+  receiptLineInfo: {
+    flex: 1,
+  },
+  receiptName: {
+    color: '#334155',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  receiptRole: {
+    color: '#94a3b8',
+    fontSize: 10,
+    marginTop: 3,
+  },
+  receiptAmount: {
+    color: '#0f172a',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  receiptTotal: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingTop: 14,
+  },
+  receiptError: {
+    backgroundColor: '#fff7ed',
+    borderRadius: 16,
+    marginTop: 16,
+    padding: 16,
+  },
+  receiptErrorText: {
+    color: '#9a3412',
+    fontSize: 12,
+  },
+  receiptRetry: {
+    alignSelf: 'flex-start',
+    marginTop: 10,
+    paddingVertical: 5,
+  },
+  receiptRetryText: {
+    color: '#be185d',
+    fontSize: 12,
+    fontWeight: '800',
   },
   participantsSection: {
     marginTop: 24,

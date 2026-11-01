@@ -24,6 +24,12 @@ address reachable from your app:
 - iOS simulator or web: `http://localhost:8080`
 - Physical device: `http://<development-computer-LAN-IP>:8080`
 
+Set `EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY` in `.env` to your Stripe publishable
+key (`pk_test_...` for testing). Never put a Stripe secret key in the mobile app.
+The Payment Sheet opens after the Gateway returns a PaymentIntent client secret.
+Stripe Payment Sheet is supported on iOS and Android; web checkout is not
+implemented in this app.
+
 Start the User Service and Gateway before submitting the form. See
 `../Harn-Kan-Gateway/README.md` for Gateway setup.
 

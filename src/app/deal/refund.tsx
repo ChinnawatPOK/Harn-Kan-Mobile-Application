@@ -1,4 +1,4 @@
-import { useRouter, type Href } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import {
   Pressable,
   ScrollView,
@@ -9,32 +9,36 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Circle, Path } from 'react-native-svg';
 import { BrandMark } from '@/components/brand-mark';
-
-const participants = [
-  { name: 'Ploy S.', detail: 'Host', initials: 'PL', refundStatus: '' },
-  {
-    name: 'Narin K.',
-    detail: 'Participant',
-    initials: 'NR',
-    refundStatus: 'Refunded',
-  },
-  {
-    name: 'Anya P.',
-    detail: 'Participant',
-    initials: 'AP',
-    refundStatus: 'Refunding',
-  },
-  {
-    name: 'You',
-    detail: 'Participant',
-    initials: 'YO',
-    refundStatus: 'Refunding',
-  },
-];
+import { DealApiState } from '@/components/deal-api-state';
+import { useDealDetails } from '@/hooks/useDealDetails';
+import type { DealParticipantStatus } from '@/types/deal.types';
 
 export default function RefundDealScreen() {
   const router = useRouter();
-  const goToHistory = () => router.push('/(tabs)/my-deals' as Href);
+  const params = useLocalSearchParams<{ id?: string | string[] }>();
+  const dealId = firstParam(params.id);
+  const dealQuery = useDealDetails(dealId);
+  const deal = dealQuery.data;
+  const goToHistory = () => router.push('/(tabs)/my-deals');
+
+  if (!dealId) {
+    return <DealApiState message="This deal link is missing its ID." />;
+  }
+
+  if (!deal) {
+    return (
+      <DealApiState
+        isLoading={dealQuery.isLoading}
+        message={dealQuery.error?.message ?? 'Could not load this deal. Sign in and try again.'}
+        onRetry={() => void dealQuery.refetch()}
+      />
+    );
+  }
+
+  const refundInProgress = deal.participants.some(
+    (person) => person.status === 'REFUND_PENDING',
+  );
+  const refundAmount = deal.me?.refundAmount ?? 0;
 
   return (
     <SafeAreaView edges={['top']} style={styles.safeArea}>
@@ -64,10 +68,16 @@ export default function RefundDealScreen() {
             </View>
             <View style={styles.warningCopy}>
               <Text style={styles.warningTitle}>
-                Deal Canceled - Refund in Progress
+                {deal.status === 'CANCELLED'
+                  ? refundInProgress
+                    ? 'Deal Canceled - Refund in Progress'
+                    : 'Deal Canceled'
+                  : deal.status === 'EXPIRED'
+                    ? 'Deal Expired'
+                    : 'Deal Refund Status'}
               </Text>
               <Text style={styles.warningDescription}>
-                Your payment is protected and being returned.
+                Refund information is based on the latest deal status.
               </Text>
             </View>
           </View>
@@ -75,24 +85,29 @@ export default function RefundDealScreen() {
           <View style={styles.dealCard}>
             <DealVisual compact />
             <View style={styles.dealInfo}>
-              <Text style={styles.category}>Food</Text>
+              <Text style={styles.category}>{categoryLabel(deal.category)}</Text>
               <Text numberOfLines={1} style={styles.dealName}>
-                Sunday pizza bundle
+                {deal.dealName}
               </Text>
               <Text numberOfLines={1} style={styles.dealSubtitle}>
-                Canceled by the host · 9 Jun
+                {deal.status} ·{' '}
+                {new Date(deal.cancelledAt ?? deal.expiresAt).toLocaleDateString()}
               </Text>
-              <Text style={styles.dealPrice}>฿880 total</Text>
+              <Text style={styles.dealPrice}>
+                ฿{deal.totalPrice.toLocaleString()} total
+              </Text>
             </View>
           </View>
 
           <View style={styles.refundAmount}>
             <Text style={styles.refundLabel}>Refund Amount</Text>
-            <Text style={styles.refundValue}>฿189</Text>
+            <Text style={styles.refundValue}>฿{refundAmount.toLocaleString()}</Text>
             <View style={styles.refundNote}>
               <Icon color="#9d174d" name="clock" size={16} />
               <Text style={styles.refundNoteText}>
-                Refunding to original payment method (within 3-5 days)
+                {refundAmount > 0
+                  ? 'Refunding to your original payment method, subject to provider processing.'
+                  : 'No refundable payment is currently recorded for your account.'}
               </Text>
             </View>
           </View>
@@ -100,46 +115,56 @@ export default function RefundDealScreen() {
           <View style={styles.participantsSection}>
             <View style={styles.participantsHeading}>
               <Text style={styles.participantsTitle}>Participants</Text>
-              <Text style={styles.participantsCount}>4 participants</Text>
+              <Text style={styles.participantsCount}>
+                {deal.participants.length} participants
+              </Text>
             </View>
             <View style={styles.participantsCard}>
-              {participants.map((person, index) => (
+              {deal.participants.map((person, index) => (
                 <View
-                  key={person.name}
+                  key={`${person.userId}-${person.slotNo}`}
                   style={[
                     styles.participantRow,
-                    index < participants.length - 1 &&
+                    index < deal.participants.length - 1 &&
                       styles.participantRowBorder,
                   ]}
                 >
                   <Avatar
-                    label={person.initials}
-                    current={person.name === 'You'}
+                    label={initialsFor(person.name)}
+                    current={false}
                   />
                   <View style={styles.participantInfo}>
                     <Text style={styles.participantName}>{person.name}</Text>
-                    <Text style={styles.participantDetail}>{person.detail}</Text>
+                    <Text style={styles.participantDetail}>
+                      {person.role === 'HOST' ? 'Host' : `Slot ${person.slotNo}`} · {participantStatusLabel(person.status)}
+                    </Text>
                   </View>
-                  {person.refundStatus ? (
+                  {person.status === 'REFUND_PENDING' ||
+                  person.status === 'REFUNDED' ? (
                     <Text
                       style={[
                         styles.refundStatus,
-                        person.refundStatus === 'Refunded'
+                        person.status === 'REFUNDED'
                           ? styles.refundedStatus
                           : styles.refundingStatus,
                       ]}
                     >
-                      {person.refundStatus}
+                      {person.status === 'REFUNDED' ? 'Refunded' : 'Refund pending'}
                     </Text>
                   ) : null}
                 </View>
               ))}
+              {deal.participants.length === 0 ? (
+                <Text style={styles.participantDetail}>No participants recorded.</Text>
+              ) : null}
             </View>
           </View>
 
-          <View style={styles.supportButton}>
-            <Text style={styles.supportButtonText}>Contact Support</Text>
-          </View>
+          {dealQuery.error ? (
+            <Text accessibilityRole="alert" style={styles.participantDetail}>
+              {dealQuery.error.message}
+            </Text>
+          ) : null}
           <Pressable
             accessibilityRole="button"
             onPress={goToHistory}
@@ -151,6 +176,44 @@ export default function RefundDealScreen() {
       </ScrollView>
     </SafeAreaView>
   );
+}
+
+function firstParam(value?: string | string[]) {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+function categoryLabel(category: string) {
+  return category === 'FOOD' ? 'Food' : 'Drink';
+}
+
+function initialsFor(name: string) {
+  return name
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part[0] ?? '')
+    .join('')
+    .toUpperCase();
+}
+
+function participantStatusLabel(status: DealParticipantStatus) {
+  switch (status) {
+    case 'HOST':
+      return 'Host';
+    case 'RESERVED':
+      return 'Reserved';
+    case 'PAYMENT_PENDING':
+      return 'Payment pending';
+    case 'HELD':
+      return 'Paid';
+    case 'RECEIVED':
+      return 'Received';
+    case 'FAILED':
+      return 'Left';
+    case 'REFUND_PENDING':
+      return 'Refund pending';
+    case 'REFUNDED':
+      return 'Refunded';
+  }
 }
 
 function DealVisual({ compact = false }: { compact?: boolean }) {

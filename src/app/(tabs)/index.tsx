@@ -183,7 +183,12 @@ export default function HomeScreen() {
                 deal={deal}
                 key={deal.id}
                 now={now}
-                onPress={() => router.push('/deal/joiner')}
+                onPress={() =>
+                  router.push({
+                    pathname: '/deal/joiner',
+                    params: { id: deal.id },
+                  })
+                }
               />
             ))}
           </View>

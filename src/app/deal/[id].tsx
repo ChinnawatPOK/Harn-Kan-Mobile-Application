@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import {
   Modal,
@@ -10,66 +10,68 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Circle, Path } from 'react-native-svg';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 
-const dealDuration = 15 * 60;
-const paymentDuration = 5 * 60;
-
-const mockParticipants = [
-  { slot: 2, name: 'Narin K.', initials: 'NR', paid: true },
-  { slot: 3, name: 'Anya P.', initials: 'AP', paid: true },
-  { slot: 4, name: 'Mook J.', initials: 'MJ', paid: false },
-];
+import { DealApiState } from '@/components/deal-api-state';
+import { cancelDeal, leaveDeal } from '@/services/deal.service';
+import {
+  dealDetailQueryKey,
+  useDealDetails,
+} from '@/hooks/useDealDetails';
+import type { DealParticipantStatus } from '@/types/deal.types';
 
 export default function DealScreen() {
   const router = useRouter();
-  const {
-    id,
-    name,
-    category,
-    price,
-    people,
-    expiresIn,
-    pickupLocation,
-    details,
-  } = useLocalSearchParams<{
-    id: string;
-    name?: string;
-    category?: string;
-    price?: string;
-    people?: string;
-    expiresIn?: string;
-    pickupLocation?: string;
-    details?: string;
-  }>();
-  const [dealSeconds, setDealSeconds] = useState(dealDuration);
-  const [paymentSeconds, setPaymentSeconds] = useState(paymentDuration);
+  const queryClient = useQueryClient();
+  const { id } = useLocalSearchParams<{ id?: string | string[] }>();
+  const dealId = firstParam(id);
+  const dealQuery = useDealDetails(dealId);
   const [showCancelModal, setShowCancelModal] = useState(false);
+  const cancelMutation = useMutation({
+    mutationFn: () => {
+      if (!dealId) throw new Error('A deal ID is required.');
+      return cancelDeal(dealId);
+    },
+    onSuccess: async (updatedDeal) => {
+      queryClient.setQueryData(dealDetailQueryKey(updatedDeal.id), updatedDeal);
+      await queryClient.invalidateQueries({ queryKey: ['my-deals'] });
+      setShowCancelModal(false);
+      router.push({ pathname: '/deal/refund', params: { id: updatedDeal.id } });
+    },
+  });
+  const leaveMutation = useMutation({
+    mutationFn: () => {
+      if (!dealId) throw new Error('A deal ID is required.');
+      return leaveDeal(dealId);
+    },
+    onSuccess: async (updatedDeal) => {
+      queryClient.setQueryData(dealDetailQueryKey(updatedDeal.id), updatedDeal);
+      await queryClient.invalidateQueries({ queryKey: ['my-deals'] });
+      router.push('/(tabs)/my-deals');
+    },
+  });
+  const deal = dealQuery.data;
 
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setDealSeconds((value) => Math.max(0, value - 1));
-      setPaymentSeconds((value) => Math.max(0, value - 1));
-    }, 1000);
+  if (!dealId) {
+    return <DealApiState message="This deal link is missing its ID." />;
+  }
 
-    return () => clearInterval(interval);
-  }, []);
+  if (!deal) {
+    return (
+      <DealApiState
+        isLoading={dealQuery.isLoading}
+        message={dealQuery.error?.message ?? 'Could not load this deal. Sign in and try again.'}
+        onRetry={() => void dealQuery.refetch()}
+      />
+    );
+  }
 
-  const dealName = firstParam(name) || 'Family-sized pizza bundle';
-  const dealCategory = firstParam(category) || 'Food';
-  const numericPrice = Number(firstParam(price) || 760);
-  const participantCount = Math.min(
-    4,
-    Math.max(2, Number(firstParam(people)) || 4),
-  );
-  const perParticipant = Math.ceil(numericPrice / participantCount);
-  const otherParticipants = mockParticipants.slice(0, participantCount - 1);
-  const location = firstParam(pickupLocation);
-  const dealDetails = firstParam(details);
-
-  const cancelDeal = () => {
-    setShowCancelModal(false);
-    router.push('/(tabs)/my-deals');
-  };
+  const participantCount = deal.participants.length;
+  const isHost = deal.me?.role === 'HOST';
+  const actions = deal.me?.actions;
+  const canJoin = deal.me
+    ? deal.me.actions.canJoin
+    : deal.actionsIfNotJoined.canJoin;
 
   return (
     <SafeAreaView edges={['top', 'bottom']} style={styles.safeArea}>
@@ -90,7 +92,7 @@ export default function DealScreen() {
                 <Icon color="#0f172a" name="back" size={20} />
               </Pressable>
               <Pressable
-                accessibilityLabel={`Deal ID ${firstParam(id) ?? ''}`}
+                accessibilityLabel={`Deal ID ${deal.id}`}
                 accessibilityRole="button"
                 style={styles.heroButton}
               >
@@ -102,15 +104,15 @@ export default function DealScreen() {
           <View style={styles.content}>
             <View style={styles.dealHeader}>
               <View style={styles.dealMainInfo}>
-                <Text style={styles.categoryBadge}>{dealCategory}</Text>
-                <Text style={styles.dealTitle}>{dealName}</Text>
+                <Text style={styles.categoryBadge}>{categoryLabel(deal.category)}</Text>
+                <Text style={styles.dealTitle}>{deal.dealName}</Text>
                 <Text style={styles.dealSubtitle}>
-                  {dealDetails || `${dealCategory} group order`}
+                  {deal.details || `${categoryLabel(deal.category)} group order`}
                 </Text>
               </View>
               <View style={styles.priceBlock}>
                 <Text style={styles.totalPrice}>
-                  ฿{numericPrice.toLocaleString()}
+                  ฿{deal.totalPrice.toLocaleString()}
                 </Text>
                 <Text style={styles.totalPriceLabel}>TOTAL PRICE</Text>
               </View>
@@ -120,66 +122,107 @@ export default function DealScreen() {
               <View style={styles.metaItem}>
                 <Icon color="#64748b" name="location" size={15} />
                 <Text style={styles.metaText}>
-                  {location || '350 m away'}
+                  {deal.pickupLocation}
                 </Text>
               </View>
               <View style={styles.metaDot} />
               <Text style={styles.metaText}>
-                {firstParam(expiresIn)
-                  ? `Expires in ${firstParam(expiresIn)}`
-                  : 'Pickup at 12:30'}
+                {deal.status} · Expires {new Date(deal.expiresAt).toLocaleString()}
               </Text>
             </View>
-
-            <Timer seconds={dealSeconds} />
 
             <View style={styles.groupSection}>
               <View style={styles.groupHeading}>
                 <Text style={styles.groupTitle}>The group</Text>
                 <Text style={styles.groupSlots}>
-                  {participantCount} participant slots
+                  {deal.joinedSlots} of {deal.targetSlots} slots
                 </Text>
               </View>
               <View style={styles.participantCard}>
-                <ParticipantRow
-                  initials="YO"
-                  name="Host (You)"
-                  subtitle="Slot 1 · Deal creator"
-                  status="No payment"
-                  statusType="none"
-                  last={otherParticipants.length === 0}
-                />
-                {otherParticipants.map((participant, index) => (
+                {deal.participants.map((participant, index) => (
                   <ParticipantRow
-                    initials={participant.initials}
-                    key={participant.slot}
-                    last={index === otherParticipants.length - 1}
+                    initials={initialsFor(participant.name)}
+                    key={`${participant.userId}-${participant.slotNo}`}
+                    last={index === participantCount - 1}
                     name={participant.name}
-                    paymentCountdown={formatTime(paymentSeconds)}
-                    price={perParticipant}
-                    slot={participant.slot}
-                    status={participant.paid ? 'Paid' : formatTime(paymentSeconds)}
-                    statusType={participant.paid ? 'paid' : 'pending'}
+                    paymentCountdown={undefined}
+                    price={deal.pricePerSlot}
+                    slot={participant.slotNo}
+                    status={participantStatusLabel(participant.status)}
+                    statusType={participantStatusType(participant.status)}
+                    subtitle={`${participant.role === 'HOST' ? 'Host' : `Slot ${participant.slotNo}`} · ฿${deal.pricePerSlot.toLocaleString()} share`}
                   />
                 ))}
+                {participantCount === 0 ? (
+                  <Text style={styles.emptyParticipants}>No participants yet.</Text>
+                ) : null}
               </View>
             </View>
 
-            <View style={styles.creatorNotice}>
-              <Icon color="#047857" name="shield" size={18} />
-              <Text style={styles.creatorNoticeText}>
-                You are the creator and do not pay in the app. Participant
-                payments are held securely.
-              </Text>
-            </View>
+            {isHost ? (
+              <View style={styles.creatorNotice}>
+                <Icon color="#047857" name="shield" size={18} />
+                <Text style={styles.creatorNoticeText}>
+                  You are the deal creator. Participant payment and refund
+                  statuses are shown above.
+                </Text>
+              </View>
+            ) : null}
 
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => setShowCancelModal(true)}
-              style={styles.cancelDealButton}
-            >
-              <Text style={styles.cancelDealText}>Cancel Deal</Text>
-            </Pressable>
+            {actions?.canCancel ? (
+              <Pressable
+                accessibilityRole="button"
+                disabled={cancelMutation.isPending}
+                onPress={() => setShowCancelModal(true)}
+                style={styles.cancelDealButton}
+              >
+                <Text style={styles.cancelDealText}>
+                  {cancelMutation.isPending ? 'Canceling…' : 'Cancel Deal'}
+                </Text>
+              </Pressable>
+            ) : canJoin || actions?.canPay ? (
+              <Pressable
+                accessibilityRole="button"
+                onPress={() =>
+                  router.push({ pathname: '/deal/joiner', params: { id: deal.id } })
+                }
+                style={styles.primaryActionButton}
+              >
+                <Text style={styles.primaryActionText}>
+                  {canJoin ? 'Join Deal' : 'Continue to Payment'}
+                </Text>
+              </Pressable>
+            ) : actions?.canLeave ? (
+              <Pressable
+                accessibilityRole="button"
+                disabled={leaveMutation.isPending}
+                onPress={() => void leaveMutation.mutateAsync()}
+                style={styles.cancelDealButton}
+              >
+                <Text style={styles.cancelDealText}>
+                  {leaveMutation.isPending ? 'Leaving…' : 'Leave Deal'}
+                </Text>
+              </Pressable>
+            ) : actions?.canConfirmReceipt ? (
+              <Pressable
+                accessibilityRole="button"
+                onPress={() =>
+                  router.push({
+                    pathname: '/deal/post-payment',
+                    params: { id: deal.id, paymentId: deal.me?.paymentId ?? '' },
+                  })
+                }
+                style={styles.primaryActionButton}
+              >
+                <Text style={styles.primaryActionText}>Confirm Item Received</Text>
+              </Pressable>
+            ) : null}
+            {cancelMutation.error || leaveMutation.error ? (
+              <Text accessibilityRole="alert" style={styles.actionError}>
+                {(cancelMutation.error ?? leaveMutation.error)?.message ??
+                  'The requested action failed.'}
+              </Text>
+            ) : null}
           </View>
         </ScrollView>
 
@@ -211,10 +254,13 @@ export default function DealScreen() {
             </Text>
             <Pressable
               accessibilityRole="button"
-              onPress={cancelDeal}
+              disabled={cancelMutation.isPending}
+              onPress={() => void cancelMutation.mutateAsync()}
               style={styles.confirmCancelButton}
             >
-              <Text style={styles.confirmCancelText}>Yes, Cancel Deal</Text>
+              <Text style={styles.confirmCancelText}>
+                {cancelMutation.isPending ? 'Canceling…' : 'Yes, Cancel Deal'}
+              </Text>
             </Pressable>
             <Pressable
               accessibilityRole="button"
@@ -224,6 +270,11 @@ export default function DealScreen() {
               <Text style={styles.keepDealText}>No, Keep Deal</Text>
             </Pressable>
           </View>
+          {cancelMutation.error ? (
+            <Text accessibilityRole="alert" style={styles.actionError}>
+              {cancelMutation.error.message}
+            </Text>
+          ) : null}
         </View>
       </Modal>
     </SafeAreaView>
@@ -234,32 +285,50 @@ function firstParam(value?: string | string[]) {
   return Array.isArray(value) ? value[0] : value;
 }
 
-function formatTime(seconds: number) {
-  const minutes = String(Math.floor(seconds / 60)).padStart(2, '0');
-  const remainingSeconds = String(seconds % 60).padStart(2, '0');
-  return `${minutes}:${remainingSeconds}`;
+function categoryLabel(category: string) {
+  return category === 'FOOD' ? 'Food' : 'Drink';
 }
 
-function Timer({ seconds }: { seconds: number }) {
-  const progress = Math.min(100, Math.max(0, (seconds / dealDuration) * 100));
+function initialsFor(name: string) {
+  return name
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part[0] ?? '')
+    .join('')
+    .toUpperCase();
+}
 
-  return (
-    <View style={styles.timerCard}>
-      <View style={styles.timerRow}>
-        <View style={styles.timerIcon}>
-          <Icon color="#fcd34d" name="clock" size={22} />
-        </View>
-        <View style={styles.timerText}>
-          <Text style={styles.timerLabel}>DEAL EXPIRES IN</Text>
-          <Text style={styles.timerValue}>{formatTime(seconds)}</Text>
-        </View>
-        <Text style={styles.reservedBadge}>Reserved</Text>
-      </View>
-      <View style={styles.progressTrack}>
-        <View style={[styles.progressValue, { width: `${progress}%` }]} />
-      </View>
-    </View>
-  );
+function participantStatusLabel(status: DealParticipantStatus) {
+  switch (status) {
+    case 'HOST':
+      return 'Host';
+    case 'RESERVED':
+      return 'Reserved';
+    case 'PAYMENT_PENDING':
+      return 'Payment pending';
+    case 'HELD':
+      return 'Paid';
+    case 'RECEIVED':
+      return 'Received';
+    case 'FAILED':
+      return 'Left';
+    case 'REFUND_PENDING':
+      return 'Refund pending';
+    case 'REFUNDED':
+      return 'Refunded';
+  }
+}
+
+function participantStatusType(
+  status: DealParticipantStatus,
+): 'none' | 'paid' | 'pending' {
+  if (status === 'HELD' || status === 'RECEIVED' || status === 'REFUNDED') {
+    return 'paid';
+  }
+  if (status === 'RESERVED' || status === 'PAYMENT_PENDING' || status === 'REFUND_PENDING') {
+    return 'pending';
+  }
+  return 'none';
 }
 
 function DealVisual() {
@@ -740,6 +809,12 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.05,
     shadowRadius: 4,
   },
+  emptyParticipants: {
+    color: '#64748b',
+    fontSize: 13,
+    padding: 18,
+    textAlign: 'center',
+  },
   participantRow: {
     alignItems: 'center',
     flexDirection: 'row',
@@ -837,6 +912,24 @@ const styles = StyleSheet.create({
     color: '#dc2626',
     fontSize: 11,
     fontWeight: '800',
+  },
+  primaryActionButton: {
+    alignItems: 'center',
+    backgroundColor: '#d82f78',
+    borderRadius: 16,
+    marginTop: 16,
+    paddingVertical: 15,
+  },
+  primaryActionText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  actionError: {
+    color: '#b91c1c',
+    fontSize: 12,
+    marginTop: 8,
+    textAlign: 'center',
   },
   bottomBar: {
     backgroundColor: 'rgba(255, 255, 255, 0.98)',

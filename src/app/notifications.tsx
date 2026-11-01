@@ -91,7 +91,7 @@ export default function NotificationsScreen() {
             <Pressable
               accessibilityRole="button"
               key={notification.id}
-              onPress={() => router.push('/deal/joiner')}
+              onPress={() => router.push('/(tabs)/my-deals')}
               style={({ pressed }) => [
                 styles.notificationCard,
                 pressed && styles.notificationCardPressed,
