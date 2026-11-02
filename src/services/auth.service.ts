@@ -18,21 +18,21 @@ type LoginResponse = {
 export async function registerAccount(
   input: RegisterInput,
 ): Promise<RegisterResult> {
-  const credentials = {
-    phoneNumber: input.phoneNumber,
-    password: input.password,
-  };
   await apiClient.post<ApiResponse<{ user: User }>>(endpoints.auth.register, {
     name: input.fullName,
-    ...credentials,
+    phone_number: input.phoneNumber,
+    password: input.password,
   });
-  return loginAccount(credentials);
+  return loginAccount({
+    phoneNumber: input.phoneNumber,
+    password: input.password,
+  });
 }
 
 export async function loginAccount(input: LoginInput): Promise<LoginResult> {
   const { data } = await apiClient.post<ApiResponse<LoginResponse>>(
     endpoints.auth.login,
-    input,
+    { phone_number: input.phoneNumber, password: input.password },
   );
   return { token: data.data.accessToken, user: data.data.user };
 }
