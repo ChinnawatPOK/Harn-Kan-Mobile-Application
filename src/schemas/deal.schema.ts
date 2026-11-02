@@ -146,3 +146,22 @@ export type JoinDealResponse = {
   reservedUntil: string;
   deal: DealDetail;
 };
+
+export type DealReceipt = {
+  receiptNo: string;
+  dealId: string;
+  dealName: string;
+  category: DealCategory;
+  completedAt: string;
+  totalPrice: number;
+  pricePerSlot: number;
+  role: DealRole;
+  amount: number;
+  paymentId: string | null;
+  payoutToHost: number;
+  lines: {
+    name: string;
+    role: DealRole;
+    amount: number;
+  }[];
+};

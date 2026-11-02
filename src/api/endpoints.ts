@@ -8,10 +8,8 @@ export const endpoints = {
     nearby: "/api/deals/nearby",
     mine: "/api/deals/mine",
     byId: (dealId: string) => `/api/deals/${encodeURIComponent(dealId)}`,
-    join: (dealId: string) =>
-      `/api/deals/${encodeURIComponent(dealId)}/join`,
-    leave: (dealId: string) =>
-      `/api/deals/${encodeURIComponent(dealId)}/leave`,
+    join: (dealId: string) => `/api/deals/${encodeURIComponent(dealId)}/join`,
+    leave: (dealId: string) => `/api/deals/${encodeURIComponent(dealId)}/leave`,
     confirmReceipt: (dealId: string) =>
       `/api/deals/${encodeURIComponent(dealId)}/confirm-receipt`,
     receipt: (dealId: string) =>
@@ -20,8 +18,6 @@ export const endpoints = {
   payments: {
     pay: (paymentId: string) =>
       `/api/payments/${encodeURIComponent(paymentId)}/pay`,
-    byId: (paymentId: string) =>
-      `/api/payments/${encodeURIComponent(paymentId)}`,
   },
   notifications: {
     list: "/api/notifications",

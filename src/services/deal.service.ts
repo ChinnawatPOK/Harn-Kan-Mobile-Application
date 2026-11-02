@@ -3,6 +3,7 @@ import { endpoints } from "@/api/endpoints";
 import type {
   CreateDealRequest,
   DealDetail,
+  DealReceipt,
   JoinDealResponse,
   MyDeal,
   MyDealsParams,
@@ -10,7 +11,6 @@ import type {
   NearbyDealsParams,
   Page,
 } from "@/schemas/deal.schema";
-import type { DealReceipt } from "@/types/deal.types";
 
 export async function createDeal(
   request: CreateDealRequest,

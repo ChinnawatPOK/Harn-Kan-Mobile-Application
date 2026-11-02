@@ -13,6 +13,7 @@ import {
   confirmReceipt,
   createDeal,
   getDeal,
+  getDealReceipt,
   getMyDeals,
   getNearbyDeals,
   joinDeal,
@@ -158,5 +159,14 @@ export function useMyDeals(params: MyDealsParams) {
     queryFn: () => getMyDeals(params),
     enabled: Boolean(accessToken),
     placeholderData: keepPreviousData,
+  });
+}
+
+export function useDealReceipt(dealId: string | undefined) {
+  const accessToken = useAuthStore((state) => state.accessToken);
+  return useQuery({
+    queryKey: [...dealQueryKey(dealId ?? ""), "receipt"],
+    queryFn: () => getDealReceipt(dealId!),
+    enabled: Boolean(accessToken && dealId),
   });
 }

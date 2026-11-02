@@ -1,30 +1,21 @@
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import {
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import Svg, { Path } from 'react-native-svg';
+import { useLocalSearchParams, useRouter } from "expo-router";
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import Svg, { Path } from "react-native-svg";
 
-import { BrandMark } from '@/components/brand-mark';
-import { DealApiState } from '@/components/deal-api-state';
-import {
-  useDealDetails,
-  useDealReceipt,
-} from '@/hooks/useDealDetails';
-import type { DealParticipantStatus } from '@/types/deal.types';
+import { BrandMark } from "@/components/brand-mark";
+import { DealApiState } from "@/components/deal-api-state";
+import { useDeal, useDealReceipt } from "@/hooks/useDeals";
+import type { ParticipantStatus } from "@/schemas/deal.schema";
 
 export default function CompletedDealScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ id?: string | string[] }>();
   const dealId = firstParam(params.id);
-  const dealQuery = useDealDetails(dealId);
+  const dealQuery = useDeal(dealId);
   const deal = dealQuery.data;
   const receiptQuery = useDealReceipt(
-    deal?.status === 'COMPLETED' ? deal.id : undefined,
+    deal?.status === "COMPLETED" ? deal.id : undefined,
   );
 
   if (!dealId) {
@@ -35,7 +26,10 @@ export default function CompletedDealScreen() {
     return (
       <DealApiState
         isLoading={dealQuery.isLoading}
-        message={dealQuery.error?.message ?? 'Could not load this deal. Sign in and try again.'}
+        message={
+          dealQuery.error?.message ??
+          "Could not load this deal. Sign in and try again."
+        }
         onRetry={() => void dealQuery.refetch()}
       />
     );
@@ -43,7 +37,7 @@ export default function CompletedDealScreen() {
   const receipt = receiptQuery.data;
 
   return (
-    <SafeAreaView edges={['top', 'bottom']} style={styles.safeArea}>
+    <SafeAreaView edges={["top", "bottom"]} style={styles.safeArea}>
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
@@ -55,7 +49,7 @@ export default function CompletedDealScreen() {
             onPress={() =>
               router.canGoBack()
                 ? router.back()
-                : router.replace('/(tabs)/my-deals')
+                : router.replace("/(tabs)/my-deals")
             }
             style={styles.backButton}
           >
@@ -71,7 +65,9 @@ export default function CompletedDealScreen() {
           <View style={styles.dealCard}>
             <DealVisual compact />
             <View style={styles.dealInfo}>
-              <Text style={styles.categoryBadge}>{categoryLabel(deal.category)}</Text>
+              <Text style={styles.categoryBadge}>
+                {categoryLabel(deal.category)}
+              </Text>
               <Text numberOfLines={1} style={styles.dealName}>
                 {deal.dealName}
               </Text>
@@ -84,7 +80,7 @@ export default function CompletedDealScreen() {
             </View>
           </View>
 
-          {deal.status === 'COMPLETED' ? (
+          {deal.status === "COMPLETED" ? (
             <View style={styles.successBanner}>
               <View style={styles.successIcon}>
                 <Icon color="#fff" name="check" size={23} />
@@ -94,23 +90,29 @@ export default function CompletedDealScreen() {
                 <Text style={styles.successDescription}>
                   {receipt
                     ? `Receipt ${receipt.receiptNo} · ${new Date(receipt.completedAt).toLocaleString()}`
-                    : 'Loading the official receipt…'}
+                    : "Loading the official receipt…"}
                 </Text>
               </View>
             </View>
           ) : (
             <View style={styles.receiptError}>
               <Text style={styles.receiptErrorText}>
-                Deal status: {deal.status}. The receipt becomes available after completion.
+                Deal status: {deal.status}. The receipt becomes available after
+                completion.
               </Text>
             </View>
           )}
 
           {receipt ? (
             <View style={styles.receiptCard}>
-              <Text style={styles.receiptHeading}>Receipt {receipt.receiptNo}</Text>
+              <Text style={styles.receiptHeading}>
+                Receipt {receipt.receiptNo}
+              </Text>
               {receipt.lines.map((line, index) => (
-                <View key={`${line.role}-${line.name}-${index}`} style={styles.receiptLine}>
+                <View
+                  key={`${line.role}-${line.name}-${index}`}
+                  style={styles.receiptLine}
+                >
                   <View style={styles.receiptLineInfo}>
                     <Text style={styles.receiptName}>{line.name}</Text>
                     <Text style={styles.receiptRole}>{line.role}</Text>
@@ -163,10 +165,13 @@ export default function CompletedDealScreen() {
                   <View style={styles.participantInfo}>
                     <Text style={styles.participantName}>{person.name}</Text>
                     <Text style={styles.participantDetail}>
-                      {person.role === 'HOST' ? 'Host' : `Slot ${person.slotNo}`} · {participantStatusLabel(person.status)}
+                      {person.role === "HOST"
+                        ? "Host"
+                        : `Slot ${person.slotNo}`}{" "}
+                      · {participantStatusLabel(person.status)}
                     </Text>
                   </View>
-                  {person.status === 'HELD' || person.status === 'RECEIVED' ? (
+                  {person.status === "HELD" || person.status === "RECEIVED" ? (
                     <View style={styles.paidBadge}>
                       <Icon color="#047857" name="check" size={11} />
                       <Text style={styles.paidBadgeText}>
@@ -177,7 +182,9 @@ export default function CompletedDealScreen() {
                 </View>
               ))}
               {deal.participants.length === 0 ? (
-                <Text style={styles.participantDetail}>No participants recorded.</Text>
+                <Text style={styles.participantDetail}>
+                  No participants recorded.
+                </Text>
               ) : null}
             </View>
           </View>
@@ -193,12 +200,12 @@ export default function CompletedDealScreen() {
           >
             <Icon color="#fff" name="ticket" size={18} />
             <Text style={styles.receiptButtonText}>
-              {receiptQuery.isFetching ? 'Refreshing…' : 'Refresh Receipt'}
+              {receiptQuery.isFetching ? "Refreshing…" : "Refresh Receipt"}
             </Text>
           </Pressable>
           <Pressable
             accessibilityRole="button"
-            onPress={() => router.push('/(tabs)')}
+            onPress={() => router.push("/(tabs)")}
             style={styles.homeButton}
           >
             <Text style={styles.homeButtonText}>Back to Home</Text>
@@ -214,36 +221,36 @@ function firstParam(value?: string | string[]) {
 }
 
 function categoryLabel(category: string) {
-  return category === 'FOOD' ? 'Food' : 'Drink';
+  return category === "FOOD" ? "Food" : "Drink";
 }
 
 function initialsFor(name: string) {
   return name
     .split(/\s+/)
     .slice(0, 2)
-    .map((part) => part[0] ?? '')
-    .join('')
+    .map((part) => part[0] ?? "")
+    .join("")
     .toUpperCase();
 }
 
-function participantStatusLabel(status: DealParticipantStatus) {
+function participantStatusLabel(status: ParticipantStatus) {
   switch (status) {
-    case 'HOST':
-      return 'Host';
-    case 'RESERVED':
-      return 'Reserved';
-    case 'PAYMENT_PENDING':
-      return 'Payment pending';
-    case 'HELD':
-      return 'Paid';
-    case 'RECEIVED':
-      return 'Received';
-    case 'FAILED':
-      return 'Left';
-    case 'REFUND_PENDING':
-      return 'Refund pending';
-    case 'REFUNDED':
-      return 'Refunded';
+    case "HOST":
+      return "Host";
+    case "RESERVED":
+      return "Reserved";
+    case "PAYMENT_PENDING":
+      return "Payment pending";
+    case "HELD":
+      return "Paid";
+    case "RECEIVED":
+      return "Received";
+    case "FAILED":
+      return "Left";
+    case "REFUND_PENDING":
+      return "Refund pending";
+    case "REFUNDED":
+      return "Refunded";
   }
 }
 
@@ -252,17 +259,25 @@ function DealVisual({ compact = false }: { compact?: boolean }) {
     <View style={[styles.dealVisual, compact && styles.dealVisualCompact]}>
       <View
         pointerEvents="none"
-        style={[styles.visualCircleLarge, compact && styles.visualCircleLargeCompact]}
+        style={[
+          styles.visualCircleLarge,
+          compact && styles.visualCircleLargeCompact,
+        ]}
       />
       <View
         pointerEvents="none"
-        style={[styles.visualCircleSmall, compact && styles.visualCircleSmallCompact]}
+        style={[
+          styles.visualCircleSmall,
+          compact && styles.visualCircleSmallCompact,
+        ]}
       />
       <View style={[styles.visualPlate, compact && styles.visualPlateCompact]}>
         <View style={[styles.visualFood, compact && styles.visualFoodCompact]}>
           <View style={styles.foodTop} />
           <View style={[styles.foodLine, compact && styles.foodLineCompact]} />
-          <View style={[styles.foodLineShort, compact && styles.foodLineCompact]} />
+          <View
+            style={[styles.foodLineShort, compact && styles.foodLineCompact]}
+          />
         </View>
       </View>
     </View>
@@ -283,7 +298,7 @@ function Icon({
   size,
 }: {
   color: string;
-  name: 'back' | 'check' | 'ticket';
+  name: "back" | "check" | "ticket";
   size: number;
 }) {
   return (
@@ -297,9 +312,9 @@ function Icon({
       viewBox="0 0 24 24"
       width={size}
     >
-      {name === 'back' ? <Path d="m15 18-6-6 6-6" /> : null}
-      {name === 'check' ? <Path d="m5 12 4 4L19 6" /> : null}
-      {name === 'ticket' ? (
+      {name === "back" ? <Path d="m15 18-6-6 6-6" /> : null}
+      {name === "check" ? <Path d="m5 12 4 4L19 6" /> : null}
+      {name === "ticket" ? (
         <>
           <Path d="M4 6h16v4a2 2 0 0 0 0 4v4H4v-4a2 2 0 0 0 0-4V6Z" />
           <Path d="M13 9h3M13 15h3M8 9v6" />
@@ -311,33 +326,33 @@ function Icon({
 
 const styles = StyleSheet.create({
   safeArea: {
-    backgroundColor: '#fff',
+    backgroundColor: "#fff",
     flex: 1,
   },
   scrollContent: {
     paddingBottom: 24,
   },
   header: {
-    alignItems: 'center',
-    flexDirection: 'row',
+    alignItems: "center",
+    flexDirection: "row",
     height: 80,
-    justifyContent: 'space-between',
+    justifyContent: "space-between",
     paddingHorizontal: 20,
-    position: 'relative',
+    position: "relative",
   },
   backButton: {
-    alignItems: 'center',
-    backgroundColor: '#fdf2f8',
+    alignItems: "center",
+    backgroundColor: "#fdf2f8",
     borderRadius: 999,
     height: 40,
-    justifyContent: 'center',
+    justifyContent: "center",
     width: 40,
   },
   brandMark: {
     left: 0,
-    position: 'absolute',
+    position: "absolute",
     right: 0,
-    alignItems: 'center',
+    alignItems: "center",
   },
   headerSpacer: {
     height: 40,
@@ -347,28 +362,28 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
   },
   dealCard: {
-    alignItems: 'center',
-    backgroundColor: '#fff',
-    borderColor: '#fce7f3',
+    alignItems: "center",
+    backgroundColor: "#fff",
+    borderColor: "#fce7f3",
     borderRadius: 24,
     borderWidth: 1,
     elevation: 2,
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: 12,
     padding: 12,
-    shadowColor: '#0f172a',
+    shadowColor: "#0f172a",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.06,
     shadowRadius: 5,
   },
   dealVisual: {
-    alignItems: 'center',
-    backgroundColor: '#fdf2f8',
+    alignItems: "center",
+    backgroundColor: "#fdf2f8",
     height: 208,
-    justifyContent: 'center',
-    overflow: 'hidden',
-    position: 'relative',
-    width: '100%',
+    justifyContent: "center",
+    overflow: "hidden",
+    position: "relative",
+    width: "100%",
   },
   dealVisualCompact: {
     borderRadius: 16,
@@ -376,10 +391,10 @@ const styles = StyleSheet.create({
     width: 96,
   },
   visualCircleLarge: {
-    backgroundColor: 'rgba(249, 168, 212, 0.7)',
+    backgroundColor: "rgba(249, 168, 212, 0.7)",
     borderRadius: 999,
     height: 112,
-    position: 'absolute',
+    position: "absolute",
     right: -32,
     top: 16,
     width: 112,
@@ -391,12 +406,12 @@ const styles = StyleSheet.create({
     width: 56,
   },
   visualCircleSmall: {
-    backgroundColor: '#fbcfe8',
+    backgroundColor: "#fbcfe8",
     borderRadius: 999,
     bottom: 12,
     height: 80,
     left: 16,
-    position: 'absolute',
+    position: "absolute",
     width: 80,
   },
   visualCircleSmallCompact: {
@@ -406,13 +421,13 @@ const styles = StyleSheet.create({
     width: 40,
   },
   visualPlate: {
-    alignItems: 'center',
-    backgroundColor: '#fff',
+    alignItems: "center",
+    backgroundColor: "#fff",
     borderRadius: 64,
     elevation: 8,
     height: 128,
-    justifyContent: 'center',
-    shadowColor: '#9d174d',
+    justifyContent: "center",
+    shadowColor: "#9d174d",
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.14,
     shadowRadius: 10,
@@ -423,12 +438,12 @@ const styles = StyleSheet.create({
     width: 64,
   },
   visualFood: {
-    backgroundColor: '#ec4899',
-    borderColor: '#fdf2f8',
+    backgroundColor: "#ec4899",
+    borderColor: "#fdf2f8",
     borderRadius: 44,
     borderWidth: 6,
     height: 80,
-    overflow: 'hidden',
+    overflow: "hidden",
     width: 80,
   },
   visualFoodCompact: {
@@ -438,27 +453,27 @@ const styles = StyleSheet.create({
     width: 40,
   },
   foodTop: {
-    backgroundColor: 'rgba(251, 207, 232, 0.8)',
+    backgroundColor: "rgba(251, 207, 232, 0.8)",
     borderTopLeftRadius: 40,
     borderTopRightRadius: 40,
-    height: '50%',
-    width: '100%',
+    height: "50%",
+    width: "100%",
   },
   foodLine: {
-    alignSelf: 'center',
-    backgroundColor: '#be185d',
+    alignSelf: "center",
+    backgroundColor: "#be185d",
     borderRadius: 6,
     height: 6,
     marginTop: 4,
-    width: '66%',
+    width: "66%",
   },
   foodLineShort: {
-    alignSelf: 'center',
-    backgroundColor: '#f9a8d4',
+    alignSelf: "center",
+    backgroundColor: "#f9a8d4",
     borderRadius: 6,
     height: 6,
     marginTop: 4,
-    width: '50%',
+    width: "50%",
   },
   foodLineCompact: {
     height: 3,
@@ -469,55 +484,55 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   categoryBadge: {
-    alignSelf: 'flex-start',
-    backgroundColor: '#fce7f3',
+    alignSelf: "flex-start",
+    backgroundColor: "#fce7f3",
     borderRadius: 999,
-    color: '#be185d',
+    color: "#be185d",
     fontSize: 9,
-    fontWeight: '800',
-    overflow: 'hidden',
+    fontWeight: "800",
+    overflow: "hidden",
     paddingHorizontal: 8,
     paddingVertical: 4,
-    textTransform: 'uppercase',
+    textTransform: "uppercase",
   },
   dealName: {
-    color: '#020617',
+    color: "#020617",
     fontSize: 17,
-    fontWeight: '800',
+    fontWeight: "800",
     letterSpacing: -0.4,
     marginTop: 7,
   },
   dealDescription: {
-    color: '#94a3b8',
+    color: "#94a3b8",
     fontSize: 10,
-    fontWeight: '600',
+    fontWeight: "600",
     marginTop: 3,
   },
   dealPrice: {
-    color: '#020617',
+    color: "#020617",
     fontSize: 13,
-    fontWeight: '800',
+    fontWeight: "800",
     marginTop: 7,
   },
   successBanner: {
-    alignItems: 'center',
-    backgroundColor: '#ecfdf5',
-    borderColor: '#d1fae5',
+    alignItems: "center",
+    backgroundColor: "#ecfdf5",
+    borderColor: "#d1fae5",
     borderRadius: 24,
     borderWidth: 1,
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: 12,
     marginTop: 20,
     padding: 20,
   },
   successIcon: {
-    alignItems: 'center',
-    backgroundColor: '#059669',
+    alignItems: "center",
+    backgroundColor: "#059669",
     borderRadius: 24,
     elevation: 3,
     height: 48,
-    justifyContent: 'center',
-    shadowColor: '#a7f3d0',
+    justifyContent: "center",
+    shadowColor: "#a7f3d0",
     shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.7,
     shadowRadius: 5,
@@ -527,201 +542,201 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   successTitle: {
-    color: '#065f46',
+    color: "#065f46",
     fontSize: 16,
-    fontWeight: '800',
+    fontWeight: "800",
   },
   successDescription: {
-    color: '#047857',
+    color: "#047857",
     fontSize: 12,
-    fontWeight: '600',
+    fontWeight: "600",
     marginTop: 4,
   },
   receiptCard: {
-    backgroundColor: '#fff',
-    borderColor: '#f1f5f9',
+    backgroundColor: "#fff",
+    borderColor: "#f1f5f9",
     borderRadius: 20,
     borderWidth: 1,
     marginTop: 16,
     padding: 16,
   },
   receiptHeading: {
-    color: '#0f172a',
+    color: "#0f172a",
     fontSize: 14,
-    fontWeight: '800',
+    fontWeight: "800",
   },
   receiptLine: {
-    alignItems: 'center',
-    borderBottomColor: '#f1f5f9',
+    alignItems: "center",
+    borderBottomColor: "#f1f5f9",
     borderBottomWidth: StyleSheet.hairlineWidth,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    justifyContent: "space-between",
     paddingVertical: 12,
   },
   receiptLineInfo: {
     flex: 1,
   },
   receiptName: {
-    color: '#334155',
+    color: "#334155",
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: "700",
   },
   receiptRole: {
-    color: '#94a3b8',
+    color: "#94a3b8",
     fontSize: 10,
     marginTop: 3,
   },
   receiptAmount: {
-    color: '#0f172a',
+    color: "#0f172a",
     fontSize: 12,
-    fontWeight: '800',
+    fontWeight: "800",
   },
   receiptTotal: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
     paddingTop: 14,
   },
   receiptError: {
-    backgroundColor: '#fff7ed',
+    backgroundColor: "#fff7ed",
     borderRadius: 16,
     marginTop: 16,
     padding: 16,
   },
   receiptErrorText: {
-    color: '#9a3412',
+    color: "#9a3412",
     fontSize: 12,
   },
   receiptRetry: {
-    alignSelf: 'flex-start',
+    alignSelf: "flex-start",
     marginTop: 10,
     paddingVertical: 5,
   },
   receiptRetryText: {
-    color: '#be185d',
+    color: "#be185d",
     fontSize: 12,
-    fontWeight: '800',
+    fontWeight: "800",
   },
   participantsSection: {
     marginTop: 24,
   },
   sectionHeader: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
     marginBottom: 12,
   },
   sectionTitle: {
-    color: '#020617',
+    color: "#020617",
     fontSize: 16,
-    fontWeight: '800',
+    fontWeight: "800",
   },
   sectionCount: {
-    color: '#94a3b8',
+    color: "#94a3b8",
     fontSize: 11,
-    fontWeight: '700',
+    fontWeight: "700",
   },
   participantCard: {
-    backgroundColor: '#fff',
-    borderColor: '#f1f5f9',
+    backgroundColor: "#fff",
+    borderColor: "#f1f5f9",
     borderRadius: 24,
     borderWidth: 1,
     elevation: 2,
-    overflow: 'hidden',
-    shadowColor: '#0f172a',
+    overflow: "hidden",
+    shadowColor: "#0f172a",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.05,
     shadowRadius: 4,
   },
   participantRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
+    alignItems: "center",
+    flexDirection: "row",
     gap: 12,
     minHeight: 58,
     paddingHorizontal: 14,
     paddingVertical: 12,
   },
   participantRowBorder: {
-    borderBottomColor: '#f1f5f9',
+    borderBottomColor: "#f1f5f9",
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
   avatar: {
-    alignItems: 'center',
-    backgroundColor: '#fce7f3',
-    borderColor: '#fff',
+    alignItems: "center",
+    backgroundColor: "#fce7f3",
+    borderColor: "#fff",
     borderRadius: 20,
     borderWidth: 2,
     height: 40,
-    justifyContent: 'center',
+    justifyContent: "center",
     width: 40,
   },
   avatarCurrent: {
-    backgroundColor: '#fbcfe8',
+    backgroundColor: "#fbcfe8",
   },
   avatarLabel: {
-    color: '#334155',
+    color: "#334155",
     fontSize: 10,
-    fontWeight: '800',
+    fontWeight: "800",
   },
   participantInfo: {
     flex: 1,
   },
   participantName: {
-    color: '#0f172a',
+    color: "#0f172a",
     fontSize: 13,
-    fontWeight: '800',
+    fontWeight: "800",
   },
   participantDetail: {
-    color: '#94a3b8',
+    color: "#94a3b8",
     fontSize: 10,
-    fontWeight: '600',
+    fontWeight: "600",
     marginTop: 2,
   },
   paidBadge: {
-    alignItems: 'center',
-    backgroundColor: '#ecfdf5',
+    alignItems: "center",
+    backgroundColor: "#ecfdf5",
     borderRadius: 999,
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: 4,
     paddingHorizontal: 10,
     paddingVertical: 5,
   },
   paidBadgeText: {
-    color: '#047857',
+    color: "#047857",
     fontSize: 10,
-    fontWeight: '800',
+    fontWeight: "800",
   },
   receiptButton: {
-    alignItems: 'center',
-    backgroundColor: '#db2777',
+    alignItems: "center",
+    backgroundColor: "#db2777",
     borderRadius: 16,
     elevation: 8,
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: 8,
-    justifyContent: 'center',
+    justifyContent: "center",
     marginTop: 24,
     paddingVertical: 16,
-    shadowColor: '#fbcfe8',
+    shadowColor: "#fbcfe8",
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.55,
     shadowRadius: 10,
   },
   receiptButtonText: {
-    color: '#fff',
+    color: "#fff",
     fontSize: 14,
-    fontWeight: '800',
+    fontWeight: "800",
   },
   pressed: {
     opacity: 0.9,
     transform: [{ scale: 0.98 }],
   },
   homeButton: {
-    alignItems: 'center',
+    alignItems: "center",
     paddingVertical: 16,
   },
   homeButtonText: {
-    color: '#be185d',
+    color: "#be185d",
     fontSize: 11,
-    fontWeight: '800',
+    fontWeight: "800",
   },
 });

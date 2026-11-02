@@ -26,9 +26,9 @@ address reachable from your app:
 
 Set `EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY` in `.env` to your Stripe publishable
 key (`pk_test_...` for testing). Never put a Stripe secret key in the mobile app.
-The Payment Sheet opens after the Gateway returns a PaymentIntent client secret.
-Stripe Payment Sheet is supported on iOS and Android; web checkout is not
-implemented in this app.
+The card step is mocked for now (`confirmCardPayment` in
+`src/services/payment.service.ts`); swap in Stripe's PaymentSheet once the
+backend's Stripe mode is ready.
 
 Start the User Service and Gateway before submitting the form. See
 `../Harn-Kan-Gateway/README.md` for Gateway setup.
@@ -37,9 +37,10 @@ Start the User Service and Gateway before submitting the form. See
 
 The typed clients in `src/services/` follow the mobile-facing contracts in
 `../API Design/api-design.md`. Deal and payment requests use the shared
-Axios client, which adds the saved bearer token and converts API keys between
-camelCase and snake_case. The Deal and Payment services and their Gateway
-routes must be running before those screens can load live data.
+Axios client, which adds the saved bearer token and converts response keys to
+camelCase. Requests are sent exactly as each service writes them. The Deal
+and Payment services and their Gateway routes must be running before those
+screens can load live data.
 
 ## Checks
 
