@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
+import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
+import { useState } from "react";
 import {
   ActivityIndicator,
   Modal,
@@ -9,24 +9,24 @@ import {
   StyleSheet,
   Text,
   View,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import Svg, { Circle, Path } from 'react-native-svg';
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import Svg, { Circle, Path } from "react-native-svg";
 
-import { getErrorMessage } from '@/api/errors';
-import { useCancelDeal, useDeal } from '@/hooks/useDeals';
-import { useNow } from '@/hooks/useNow';
-import { dealScreenFor } from '@/lib/deal-routing';
-import type { DealParticipant } from '@/schemas/deal.schema';
-import { formatBaht, formatDistance } from '@/utils/format';
+import { getErrorMessage } from "@/api/errors";
+import { useCancelDeal, useDeal } from "@/hooks/useDeals";
+import { useNow } from "@/hooks/useNow";
+import { dealScreenFor } from "@/lib/deal-routing";
+import type { DealParticipant } from "@/schemas/deal.schema";
+import { formatBaht, formatDistance } from "@/utils/format";
 
 function initialsOf(name: string) {
   const letters = name
     .split(/\s+/)
     .filter(Boolean)
     .map((part) => part[0])
-    .join('');
-  return letters.slice(0, 2).toUpperCase() || '?';
+    .join("");
+  return letters.slice(0, 2).toUpperCase() || "?";
 }
 
 function secondsUntil(isoDate: string | null, now: number) {
@@ -37,27 +37,27 @@ function secondsUntil(isoDate: string | null, now: number) {
 function participantStatus(
   participant: DealParticipant,
   now: number,
-): { label: string; type: 'none' | 'paid' | 'pending' } {
+): { label: string; type: "none" | "paid" | "pending" } {
   switch (participant.status) {
-    case 'HOST':
-      return { label: 'No payment', type: 'none' };
-    case 'HELD':
-    case 'RECEIVED':
-      return { label: 'Paid', type: 'paid' };
-    case 'RESERVED':
-    case 'PAYMENT_PENDING':
+    case "HOST":
+      return { label: "", type: "none" };
+    case "HELD":
+    case "RECEIVED":
+      return { label: "Paid", type: "paid" };
+    case "RESERVED":
+    case "PAYMENT_PENDING":
       return participant.reservedUntil
         ? {
             label: formatTime(secondsUntil(participant.reservedUntil, now)),
-            type: 'pending',
+            type: "pending",
           }
-        : { label: 'Waiting', type: 'pending' };
-    case 'REFUND_PENDING':
-      return { label: 'Refunding', type: 'pending' };
-    case 'REFUNDED':
-      return { label: 'Refunded', type: 'none' };
+        : { label: "Waiting", type: "pending" };
+    case "REFUND_PENDING":
+      return { label: "Refunding", type: "pending" };
+    case "REFUNDED":
+      return { label: "Refunded", type: "none" };
     default:
-      return { label: 'Left', type: 'none' };
+      return { label: "Left", type: "none" };
   }
 }
 
@@ -75,7 +75,7 @@ export default function DealScreen() {
 
   if (!deal) {
     return (
-      <SafeAreaView edges={['top', 'bottom']} style={styles.safeArea}>
+      <SafeAreaView edges={["top", "bottom"]} style={styles.safeArea}>
         <View style={styles.centered}>
           {dealQuery.isError ? (
             <>
@@ -83,7 +83,7 @@ export default function DealScreen() {
               <Text style={styles.stateMessage}>
                 {getErrorMessage(
                   dealQuery.error,
-                  'Something went wrong. Please try again.',
+                  "Something went wrong. Please try again.",
                 )}
               </Text>
               <Pressable
@@ -111,11 +111,11 @@ export default function DealScreen() {
 
   // This screen is the host view (S07); everyone else goes to their own screen.
   const screen = dealScreenFor(deal);
-  if (screen !== '/deal/[id]') {
+  if (screen !== "/deal/[id]") {
     return <Redirect href={{ pathname: screen, params: { id: deal.id } }} />;
   }
 
-  const category = deal.category === 'FOOD' ? 'Food' : 'Drink';
+  const category = deal.category === "FOOD" ? "Food" : "Drink";
   const openSlots = Math.max(0, deal.targetSlots - deal.participants.length);
   const dealSeconds = secondsUntil(deal.expiresAt, now);
   const dealDuration = Math.max(
@@ -152,7 +152,7 @@ export default function DealScreen() {
   };
 
   return (
-    <SafeAreaView edges={['top', 'bottom']} style={styles.safeArea}>
+    <SafeAreaView edges={["top", "bottom"]} style={styles.safeArea}>
       <View style={styles.screen}>
         <ScrollView
           contentContainerStyle={styles.scrollContent}
@@ -219,7 +219,7 @@ export default function DealScreen() {
             </View>
 
             <Timer
-              badge={deal.status === 'LOCKED' ? 'Reserved' : 'Active'}
+              badge={deal.status === "LOCKED" ? "Reserved" : "Active"}
               duration={dealDuration}
               seconds={dealSeconds}
             />
@@ -233,7 +233,7 @@ export default function DealScreen() {
               </View>
               <View style={styles.participantCard}>
                 {deal.participants.map((participant, index) => {
-                  const isHost = participant.role === 'HOST';
+                  const isHost = participant.role === "HOST";
                   const status = participantStatus(participant, now);
                   return (
                     <ParticipantRow
@@ -243,7 +243,7 @@ export default function DealScreen() {
                         openSlots === 0 &&
                         index === deal.participants.length - 1
                       }
-                      name={isHost ? 'Host (You)' : participant.name}
+                      name={isHost ? "Host (You)" : participant.name}
                       price={deal.pricePerSlot}
                       slot={participant.slotNo}
                       status={status.label}
@@ -324,7 +324,7 @@ export default function DealScreen() {
               <Text accessibilityRole="alert" style={styles.cancelError}>
                 {getErrorMessage(
                   cancelDealMutation.error,
-                  'Could not cancel this deal. Please try again.',
+                  "Could not cancel this deal. Please try again.",
                 )}
               </Text>
             ) : null}
@@ -339,8 +339,8 @@ export default function DealScreen() {
             >
               <Text style={styles.confirmCancelText}>
                 {cancelDealMutation.isPending
-                  ? 'Cancelling…'
-                  : 'Yes, Cancel Deal'}
+                  ? "Cancelling…"
+                  : "Yes, Cancel Deal"}
               </Text>
             </Pressable>
             <Pressable
@@ -364,8 +364,8 @@ function firstParam(value?: string | string[]) {
 
 function formatTime(seconds: number) {
   const hours = Math.floor(seconds / 3600);
-  const minutes = String(Math.floor((seconds % 3600) / 60)).padStart(2, '0');
-  const remainingSeconds = String(seconds % 60).padStart(2, '0');
+  const minutes = String(Math.floor((seconds % 3600) / 60)).padStart(2, "0");
+  const remainingSeconds = String(seconds % 60).padStart(2, "0");
   return hours > 0
     ? `${hours}:${minutes}:${remainingSeconds}`
     : `${minutes}:${remainingSeconds}`;
@@ -436,7 +436,7 @@ function ParticipantRow({
   name: string;
   subtitle?: string;
   status: string;
-  statusType: 'none' | 'paid' | 'pending';
+  statusType: "none" | "paid" | "pending";
   slot?: number;
   price?: number;
   paymentCountdown?: string;
@@ -453,37 +453,53 @@ function ParticipantRow({
         <Text style={styles.participantName}>{name}</Text>
         <Text style={styles.participantSubtitle}>{detail}</Text>
       </View>
-      {statusType === 'paid' ? (
+      {statusType === "paid" ? (
         <View style={[styles.statusPill, styles.paidPill]}>
           <Icon color="#047857" name="check" size={11} />
           <Text style={styles.paidText}>{status}</Text>
         </View>
-      ) : statusType === 'pending' ? (
+      ) : statusType === "pending" ? (
         <View style={[styles.statusPill, styles.pendingPill]}>
           <Icon color="#b45309" name="clock" size={11} />
-          <Text style={styles.pendingText}>
-            {paymentCountdown || status}
-          </Text>
+          <Text style={styles.pendingText}>{paymentCountdown || status}</Text>
         </View>
-      ) : (
+      ) : status ? (
         <View style={[styles.statusPill, styles.unpaidPill]}>
           <Text style={styles.unpaidText}>{status}</Text>
         </View>
-      )}
-  </View>
+      ) : null}
+    </View>
   );
 }
 
 function BottomBar({
   onNavigate,
 }: {
-  onNavigate: (route: '/(tabs)' | '/(tabs)/create' | '/(tabs)/my-deals' | '/(tabs)/profile') => void;
+  onNavigate: (
+    route:
+      | "/(tabs)"
+      | "/(tabs)/create"
+      | "/(tabs)/my-deals"
+      | "/(tabs)/profile",
+  ) => void;
 }) {
   const tabs = [
-    { label: 'Explore', route: '/(tabs)' as const, icon: 'home' as const },
-    { label: 'Create', route: '/(tabs)/create' as const, icon: 'plus' as const },
-    { label: 'My deals', route: '/(tabs)/my-deals' as const, icon: 'ticket' as const },
-    { label: 'Profile', route: '/(tabs)/profile' as const, icon: 'profile' as const },
+    { label: "Explore", route: "/(tabs)" as const, icon: "home" as const },
+    {
+      label: "Create",
+      route: "/(tabs)/create" as const,
+      icon: "plus" as const,
+    },
+    {
+      label: "My deals",
+      route: "/(tabs)/my-deals" as const,
+      icon: "ticket" as const,
+    },
+    {
+      label: "Profile",
+      route: "/(tabs)/profile" as const,
+      icon: "profile" as const,
+    },
   ];
 
   return (
@@ -509,7 +525,18 @@ function Icon({
   size,
 }: {
   color: string;
-  name: 'back' | 'check' | 'clock' | 'home' | 'location' | 'more' | 'plus' | 'profile' | 'shield' | 'ticket' | 'warning';
+  name:
+    | "back"
+    | "check"
+    | "clock"
+    | "home"
+    | "location"
+    | "more"
+    | "plus"
+    | "profile"
+    | "shield"
+    | "ticket"
+    | "warning";
   size: number;
 }) {
   return (
@@ -523,50 +550,50 @@ function Icon({
       viewBox="0 0 24 24"
       width={size}
     >
-      {name === 'back' ? <Path d="m15 18-6-6 6-6" /> : null}
-      {name === 'check' ? <Path d="m5 12 4 4L19 6" /> : null}
-      {name === 'clock' ? (
+      {name === "back" ? <Path d="m15 18-6-6 6-6" /> : null}
+      {name === "check" ? <Path d="m5 12 4 4L19 6" /> : null}
+      {name === "clock" ? (
         <>
           <Circle cx="12" cy="12" r="9" />
           <Path d="M12 7v5l3 2" />
         </>
       ) : null}
-      {name === 'home' ? (
+      {name === "home" ? (
         <>
           <Path d="m3 11 9-8 9 8" />
           <Path d="M5 10v10h14V10M9 20v-6h6v6" />
         </>
       ) : null}
-      {name === 'location' ? (
+      {name === "location" ? (
         <>
           <Path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z" />
           <Circle cx="12" cy="10" r="2.5" />
         </>
       ) : null}
-      {name === 'more' ? (
+      {name === "more" ? (
         <>
           <Circle cx="5" cy="12" r="1" fill={color} />
           <Circle cx="12" cy="12" r="1" fill={color} />
           <Circle cx="19" cy="12" r="1" fill={color} />
         </>
       ) : null}
-      {name === 'plus' ? <Path d="M12 5v14M5 12h14" /> : null}
-      {name === 'profile' ? (
+      {name === "plus" ? <Path d="M12 5v14M5 12h14" /> : null}
+      {name === "profile" ? (
         <>
           <Circle cx="12" cy="8" r="4" />
           <Path d="M4 21a8 8 0 0 1 16 0" />
         </>
       ) : null}
-      {name === 'shield' ? (
+      {name === "shield" ? (
         <Path d="M12 3 5 6v5c0 5 3 8 7 10 4-2 7-5 7-10V6l-7-3Zm-3 9 2 2 4-4" />
       ) : null}
-      {name === 'ticket' ? (
+      {name === "ticket" ? (
         <>
           <Path d="M4 6h16v4a2 2 0 0 0 0 4v4H4v-4a2 2 0 0 0 0-4V6Z" />
           <Path d="M13 9h3M13 15h3M8 9v6" />
         </>
       ) : null}
-      {name === 'warning' ? (
+      {name === "warning" ? (
         <>
           <Path d="M10.3 4.4 2.6 18a2 2 0 0 0 1.8 3h15.2a2 2 0 0 0 1.8-3L13.7 4.4a2 2 0 0 0-3.4 0Z" />
           <Path d="M12 9v4M12 17h.01" />
@@ -578,37 +605,37 @@ function Icon({
 
 const styles = StyleSheet.create({
   safeArea: {
-    backgroundColor: '#fff',
+    backgroundColor: "#fff",
     flex: 1,
   },
   centered: {
-    alignItems: 'center',
+    alignItems: "center",
     flex: 1,
-    justifyContent: 'center',
+    justifyContent: "center",
     padding: 24,
   },
   stateTitle: {
-    color: '#0f172a',
+    color: "#0f172a",
     fontSize: 16,
-    fontWeight: '800',
+    fontWeight: "800",
   },
   stateMessage: {
-    color: '#64748b',
+    color: "#64748b",
     fontSize: 12,
     marginTop: 6,
-    textAlign: 'center',
+    textAlign: "center",
   },
   retryButton: {
-    backgroundColor: '#db2777',
+    backgroundColor: "#db2777",
     borderRadius: 999,
     marginTop: 18,
     paddingHorizontal: 22,
     paddingVertical: 11,
   },
   retryText: {
-    color: '#fff',
+    color: "#fff",
     fontSize: 13,
-    fontWeight: '800',
+    fontWeight: "800",
   },
   screen: {
     flex: 1,
@@ -618,508 +645,508 @@ const styles = StyleSheet.create({
   },
   hero: {
     height: 208,
-    position: 'relative',
+    position: "relative",
   },
   dealVisual: {
-    alignItems: 'center',
-    backgroundColor: '#fce7f3',
-    height: '100%',
-    justifyContent: 'center',
-    overflow: 'hidden',
+    alignItems: "center",
+    backgroundColor: "#fce7f3",
+    height: "100%",
+    justifyContent: "center",
+    overflow: "hidden",
   },
   visualCircleLarge: {
-    backgroundColor: 'rgba(244, 114, 182, 0.65)',
+    backgroundColor: "rgba(244, 114, 182, 0.65)",
     borderRadius: 999,
     height: 112,
-    position: 'absolute',
+    position: "absolute",
     right: -32,
     top: 16,
     width: 112,
   },
   visualCircleSmall: {
-    backgroundColor: '#fbcfe8',
+    backgroundColor: "#fbcfe8",
     borderRadius: 999,
     bottom: 12,
     height: 80,
     left: 16,
-    position: 'absolute',
+    position: "absolute",
     width: 80,
   },
   visualPlate: {
-    alignItems: 'center',
-    backgroundColor: '#fff',
+    alignItems: "center",
+    backgroundColor: "#fff",
     borderRadius: 64,
     elevation: 10,
     height: 128,
-    justifyContent: 'center',
-    shadowColor: '#9d174d',
+    justifyContent: "center",
+    shadowColor: "#9d174d",
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.15,
     shadowRadius: 12,
     width: 128,
   },
   visualFood: {
-    backgroundColor: '#ec4899',
-    borderColor: '#fdf2f8',
+    backgroundColor: "#ec4899",
+    borderColor: "#fdf2f8",
     borderRadius: 44,
     borderWidth: 6,
     height: 80,
-    overflow: 'hidden',
+    overflow: "hidden",
     width: 80,
   },
   foodTop: {
-    backgroundColor: 'rgba(251, 207, 232, 0.8)',
+    backgroundColor: "rgba(251, 207, 232, 0.8)",
     borderTopLeftRadius: 40,
     borderTopRightRadius: 40,
-    height: '50%',
-    width: '100%',
+    height: "50%",
+    width: "100%",
   },
   foodLine: {
-    alignSelf: 'center',
-    backgroundColor: '#be185d',
+    alignSelf: "center",
+    backgroundColor: "#be185d",
     borderRadius: 6,
     height: 6,
     marginTop: 4,
-    width: '66%',
+    width: "66%",
   },
   foodLineShort: {
-    alignSelf: 'center',
-    backgroundColor: '#f9a8d4',
+    alignSelf: "center",
+    backgroundColor: "#f9a8d4",
     borderRadius: 6,
     height: 6,
     marginTop: 4,
-    width: '50%',
+    width: "50%",
   },
   heroActions: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    justifyContent: "space-between",
     left: 20,
-    position: 'absolute',
+    position: "absolute",
     right: 20,
     top: 8,
   },
   heroButton: {
-    alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.92)',
+    alignItems: "center",
+    backgroundColor: "rgba(255, 255, 255, 0.92)",
     borderRadius: 20,
     elevation: 2,
     height: 40,
-    justifyContent: 'center',
-    shadowColor: '#0f172a',
+    justifyContent: "center",
+    shadowColor: "#0f172a",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
     width: 40,
   },
   pickupBadge: {
-    alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.92)',
+    alignItems: "center",
+    backgroundColor: "rgba(255, 255, 255, 0.92)",
     borderRadius: 999,
     bottom: 12,
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: 5,
     paddingHorizontal: 12,
     paddingVertical: 6,
-    position: 'absolute',
+    position: "absolute",
     right: 20,
   },
   pickupDot: {
-    backgroundColor: '#10b981',
+    backgroundColor: "#10b981",
     borderRadius: 4,
     height: 6,
     width: 6,
   },
   pickupBadgeText: {
-    color: '#334155',
+    color: "#334155",
     fontSize: 11,
-    fontWeight: '800',
+    fontWeight: "800",
   },
   content: {
-    backgroundColor: '#fff',
+    backgroundColor: "#fff",
     borderTopLeftRadius: 32,
     borderTopRightRadius: 32,
     marginTop: -20,
     paddingHorizontal: 20,
     paddingTop: 24,
-    position: 'relative',
+    position: "relative",
   },
   dealHeader: {
-    alignItems: 'flex-start',
-    flexDirection: 'row',
+    alignItems: "flex-start",
+    flexDirection: "row",
     gap: 12,
-    justifyContent: 'space-between',
+    justifyContent: "space-between",
     marginBottom: 16,
   },
   dealMainInfo: {
     flex: 1,
   },
   categoryBadge: {
-    alignSelf: 'flex-start',
-    backgroundColor: '#fce7f3',
+    alignSelf: "flex-start",
+    backgroundColor: "#fce7f3",
     borderRadius: 999,
-    color: '#be185d',
+    color: "#be185d",
     fontSize: 10,
-    fontWeight: '800',
-    overflow: 'hidden',
+    fontWeight: "800",
+    overflow: "hidden",
     paddingHorizontal: 10,
     paddingVertical: 4,
-    textTransform: 'uppercase',
+    textTransform: "uppercase",
   },
   dealTitle: {
-    color: '#020617',
+    color: "#020617",
     fontSize: 22,
-    fontWeight: '800',
+    fontWeight: "800",
     letterSpacing: -0.5,
     marginTop: 10,
   },
   dealSubtitle: {
-    color: '#94a3b8',
+    color: "#94a3b8",
     fontSize: 13,
-    fontWeight: '500',
+    fontWeight: "500",
     marginTop: 4,
   },
   priceBlock: {
-    alignItems: 'flex-end',
+    alignItems: "flex-end",
     flexShrink: 0,
   },
   totalPrice: {
-    color: '#020617',
+    color: "#020617",
     fontSize: 22,
-    fontWeight: '800',
+    fontWeight: "800",
   },
   totalPriceLabel: {
-    color: '#94a3b8',
+    color: "#94a3b8",
     fontSize: 9,
-    fontWeight: '700',
+    fontWeight: "700",
     marginTop: 2,
   },
   metaRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
+    alignItems: "center",
+    flexDirection: "row",
     gap: 8,
     marginBottom: 14,
   },
   metaItem: {
-    alignItems: 'center',
-    flexDirection: 'row',
+    alignItems: "center",
+    flexDirection: "row",
     gap: 4,
   },
   metaDot: {
-    backgroundColor: '#cbd5e1',
+    backgroundColor: "#cbd5e1",
     borderRadius: 3,
     height: 4,
     width: 4,
   },
   metaText: {
-    color: '#64748b',
+    color: "#64748b",
     fontSize: 11,
-    fontWeight: '700',
+    fontWeight: "700",
   },
   timerCard: {
-    backgroundColor: '#020617',
+    backgroundColor: "#020617",
     borderRadius: 24,
     elevation: 10,
     padding: 14,
-    shadowColor: '#0f172a',
+    shadowColor: "#0f172a",
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.2,
     shadowRadius: 12,
   },
   timerRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
+    alignItems: "center",
+    flexDirection: "row",
     gap: 10,
   },
   timerIcon: {
-    alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    alignItems: "center",
+    backgroundColor: "rgba(255, 255, 255, 0.1)",
     borderRadius: 22,
     height: 44,
-    justifyContent: 'center',
+    justifyContent: "center",
     width: 44,
   },
   timerText: {
     flex: 1,
   },
   timerLabel: {
-    color: '#94a3b8',
+    color: "#94a3b8",
     fontSize: 9,
-    fontWeight: '700',
+    fontWeight: "700",
     letterSpacing: 1.4,
   },
   timerValue: {
-    color: '#fff',
+    color: "#fff",
     fontSize: 22,
-    fontVariant: ['tabular-nums'],
-    fontWeight: '800',
+    fontVariant: ["tabular-nums"],
+    fontWeight: "800",
     letterSpacing: 2,
     marginTop: 2,
   },
   reservedBadge: {
-    backgroundColor: 'rgba(252, 211, 77, 0.15)',
+    backgroundColor: "rgba(252, 211, 77, 0.15)",
     borderRadius: 999,
-    color: '#fcd34d',
+    color: "#fcd34d",
     fontSize: 9,
-    fontWeight: '800',
-    overflow: 'hidden',
+    fontWeight: "800",
+    overflow: "hidden",
     paddingHorizontal: 9,
     paddingVertical: 5,
   },
   progressTrack: {
-    backgroundColor: 'rgba(255, 255, 255, 0.12)',
+    backgroundColor: "rgba(255, 255, 255, 0.12)",
     borderRadius: 4,
     height: 5,
     marginTop: 12,
-    overflow: 'hidden',
+    overflow: "hidden",
   },
   progressValue: {
-    backgroundColor: '#fcd34d',
+    backgroundColor: "#fcd34d",
     borderRadius: 4,
-    height: '100%',
+    height: "100%",
   },
   groupSection: {
     marginTop: 22,
   },
   groupHeading: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
     marginBottom: 10,
   },
   groupTitle: {
-    color: '#020617',
+    color: "#020617",
     fontSize: 15,
-    fontWeight: '800',
+    fontWeight: "800",
   },
   groupSlots: {
-    color: '#94a3b8',
+    color: "#94a3b8",
     fontSize: 10,
-    fontWeight: '700',
+    fontWeight: "700",
   },
   participantCard: {
-    backgroundColor: '#fff',
-    borderColor: '#f1f5f9',
+    backgroundColor: "#fff",
+    borderColor: "#f1f5f9",
     borderRadius: 24,
     borderWidth: 1,
     elevation: 2,
-    overflow: 'hidden',
-    shadowColor: '#0f172a',
+    overflow: "hidden",
+    shadowColor: "#0f172a",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.05,
     shadowRadius: 4,
   },
   participantRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
+    alignItems: "center",
+    flexDirection: "row",
     gap: 10,
     minHeight: 58,
     paddingHorizontal: 12,
     paddingVertical: 10,
   },
   participantRowBorder: {
-    borderBottomColor: '#f1f5f9',
+    borderBottomColor: "#f1f5f9",
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
   participantAvatar: {
-    alignItems: 'center',
-    backgroundColor: '#fce7f3',
+    alignItems: "center",
+    backgroundColor: "#fce7f3",
     borderRadius: 18,
     height: 36,
-    justifyContent: 'center',
+    justifyContent: "center",
     width: 36,
   },
   participantInitials: {
-    color: '#9d174d',
+    color: "#9d174d",
     fontSize: 9,
-    fontWeight: '800',
+    fontWeight: "800",
   },
   participantInfo: {
     flex: 1,
   },
   participantName: {
-    color: '#0f172a',
+    color: "#0f172a",
     fontSize: 12,
-    fontWeight: '800',
+    fontWeight: "800",
   },
   participantSubtitle: {
-    color: '#94a3b8',
+    color: "#94a3b8",
     fontSize: 9,
-    fontWeight: '600',
+    fontWeight: "600",
     marginTop: 3,
   },
   statusPill: {
-    alignItems: 'center',
+    alignItems: "center",
     borderRadius: 999,
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: 4,
     paddingHorizontal: 9,
     paddingVertical: 5,
   },
   unpaidPill: {
-    backgroundColor: '#fdf2f8',
+    backgroundColor: "#fdf2f8",
   },
   unpaidText: {
-    color: '#be185d',
+    color: "#be185d",
     fontSize: 9,
-    fontWeight: '800',
+    fontWeight: "800",
   },
   paidPill: {
-    backgroundColor: '#ecfdf5',
+    backgroundColor: "#ecfdf5",
   },
   paidText: {
-    color: '#047857',
+    color: "#047857",
     fontSize: 9,
-    fontWeight: '800',
+    fontWeight: "800",
   },
   pendingPill: {
-    backgroundColor: '#fffbeb',
+    backgroundColor: "#fffbeb",
   },
   pendingText: {
-    color: '#b45309',
+    color: "#b45309",
     fontSize: 9,
-    fontWeight: '800',
-    fontVariant: ['tabular-nums'],
+    fontWeight: "800",
+    fontVariant: ["tabular-nums"],
   },
   creatorNotice: {
-    alignItems: 'center',
-    backgroundColor: '#ecfdf5',
+    alignItems: "center",
+    backgroundColor: "#ecfdf5",
     borderRadius: 14,
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: 8,
     marginTop: 14,
     padding: 12,
   },
   creatorNoticeText: {
-    color: '#065f46',
+    color: "#065f46",
     flex: 1,
     fontSize: 9,
-    fontWeight: '700',
+    fontWeight: "700",
     lineHeight: 14,
   },
   cancelDealButton: {
-    alignItems: 'center',
+    alignItems: "center",
     marginTop: 12,
     paddingVertical: 14,
   },
   cancelDealText: {
-    color: '#dc2626',
+    color: "#dc2626",
     fontSize: 11,
-    fontWeight: '800',
+    fontWeight: "800",
   },
   bottomBar: {
-    backgroundColor: 'rgba(255, 255, 255, 0.98)',
-    borderTopColor: '#f1f5f9',
+    backgroundColor: "rgba(255, 255, 255, 0.98)",
+    borderTopColor: "#f1f5f9",
     borderTopWidth: StyleSheet.hairlineWidth,
-    flexDirection: 'row',
-    justifyContent: 'space-around',
+    flexDirection: "row",
+    justifyContent: "space-around",
     paddingBottom: 4,
     paddingTop: 8,
   },
   bottomTab: {
-    alignItems: 'center',
+    alignItems: "center",
     flex: 1,
     gap: 3,
     paddingVertical: 2,
   },
   bottomTabLabel: {
-    color: '#94a3b8',
+    color: "#94a3b8",
     fontSize: 9,
-    fontWeight: '700',
+    fontWeight: "700",
   },
   modalOverlay: {
-    alignItems: 'center',
+    alignItems: "center",
     flex: 1,
-    justifyContent: 'center',
+    justifyContent: "center",
     paddingHorizontal: 20,
   },
   modalBackdrop: {
-    backgroundColor: 'rgba(2, 6, 23, 0.55)',
+    backgroundColor: "rgba(2, 6, 23, 0.55)",
     bottom: 0,
     left: 0,
-    position: 'absolute',
+    position: "absolute",
     right: 0,
     top: 0,
   },
   modalCard: {
-    alignItems: 'center',
-    backgroundColor: '#fff',
-    borderColor: '#fee2e2',
+    alignItems: "center",
+    backgroundColor: "#fff",
+    borderColor: "#fee2e2",
     borderRadius: 32,
     borderWidth: 1,
     elevation: 20,
     padding: 24,
-    shadowColor: '#450a0a',
+    shadowColor: "#450a0a",
     shadowOffset: { width: 0, height: 12 },
     shadowOpacity: 0.2,
     shadowRadius: 20,
-    width: '100%',
+    width: "100%",
   },
   warningIcon: {
-    alignItems: 'center',
-    backgroundColor: '#fef2f2',
-    borderColor: 'rgba(254, 242, 242, 0.6)',
+    alignItems: "center",
+    backgroundColor: "#fef2f2",
+    borderColor: "rgba(254, 242, 242, 0.6)",
     borderRadius: 40,
     borderWidth: 8,
     height: 64,
-    justifyContent: 'center',
+    justifyContent: "center",
     width: 64,
   },
   modalTitle: {
-    color: '#020617',
+    color: "#020617",
     fontSize: 22,
-    fontWeight: '800',
+    fontWeight: "800",
     letterSpacing: -0.5,
     marginTop: 20,
-    textAlign: 'center',
+    textAlign: "center",
   },
   modalDescription: {
-    color: '#64748b',
+    color: "#64748b",
     fontSize: 13,
-    fontWeight: '500',
+    fontWeight: "500",
     lineHeight: 22,
     marginTop: 12,
-    textAlign: 'center',
+    textAlign: "center",
   },
   cancelError: {
-    color: '#dc2626',
+    color: "#dc2626",
     fontSize: 12,
-    fontWeight: '600',
+    fontWeight: "600",
     marginTop: 12,
-    textAlign: 'center',
+    textAlign: "center",
   },
   buttonDisabled: {
     opacity: 0.6,
   },
   confirmCancelButton: {
-    alignItems: 'center',
-    backgroundColor: '#dc2626',
+    alignItems: "center",
+    backgroundColor: "#dc2626",
     borderRadius: 16,
     elevation: 5,
     marginTop: 24,
     paddingVertical: 15,
-    shadowColor: '#fecaca',
+    shadowColor: "#fecaca",
     shadowOffset: { width: 0, height: 5 },
     shadowOpacity: 0.6,
     shadowRadius: 8,
-    width: '100%',
+    width: "100%",
   },
   confirmCancelText: {
-    color: '#fff',
+    color: "#fff",
     fontSize: 13,
-    fontWeight: '800',
+    fontWeight: "800",
   },
   keepDealButton: {
-    alignItems: 'center',
-    borderColor: '#fbcfe8',
+    alignItems: "center",
+    borderColor: "#fbcfe8",
     borderRadius: 16,
     borderWidth: 2,
     marginTop: 10,
     paddingVertical: 13,
-    width: '100%',
+    width: "100%",
   },
   keepDealText: {
-    color: '#be185d',
+    color: "#be185d",
     fontSize: 13,
-    fontWeight: '800',
+    fontWeight: "800",
   },
 });

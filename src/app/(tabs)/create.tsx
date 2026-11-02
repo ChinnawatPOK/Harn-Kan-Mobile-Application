@@ -115,6 +115,7 @@ export default function CreateTab() {
         onSuccess: (deal) => {
           setShowCreateConfirmation(false);
           resetForm();
+          router.navigate("/(tabs)/my-deals");
           router.push({ pathname: "/deal/[id]", params: { id: deal.id } });
         },
       },

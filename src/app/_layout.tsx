@@ -5,6 +5,7 @@ import { useEffect } from 'react';
 import { useColorScheme } from 'react-native';
 
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
+import { AppStripeProvider } from '@/components/stripe-provider';
 import { queryClient } from '@/lib/query-client';
 import { useAuthStore } from '@/stores/auth.store';
 
@@ -20,8 +21,10 @@ export default function RootLayout() {
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
       <QueryClientProvider client={queryClient}>
-        <AnimatedSplashOverlay />
-        <Stack screenOptions={{ headerShown: false }} />
+        <AppStripeProvider>
+          <AnimatedSplashOverlay />
+          <Stack screenOptions={{ headerShown: false }} />
+        </AppStripeProvider>
       </QueryClientProvider>
     </ThemeProvider>
   );

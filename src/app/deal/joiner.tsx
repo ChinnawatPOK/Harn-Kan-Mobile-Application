@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
+import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
+import { useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -10,25 +10,32 @@ import {
   StyleSheet,
   Text,
   View,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import Svg, { Circle, Path, Rect } from 'react-native-svg';
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import Svg, { Circle, Path, Rect } from "react-native-svg";
 
-import { getErrorMessage } from '@/api/errors';
-import { useDeal, useJoinDeal, useLeaveDeal, usePayDeal } from '@/hooks/useDeals';
-import { useNow } from '@/hooks/useNow';
-import { useProfile } from '@/hooks/useProfile';
-import { dealScreenFor } from '@/lib/deal-routing';
-import type { DealParticipant } from '@/schemas/deal.schema';
-import { formatBaht } from '@/utils/format';
+import { getErrorMessage } from "@/api/errors";
+import { MockPaymentSheet } from "@/components/mock-payment-sheet";
+import {
+  useDeal,
+  useJoinDeal,
+  useLeaveDeal,
+  usePayDeal,
+} from "@/hooks/useDeals";
+import { useNow } from "@/hooks/useNow";
+import { useProfile } from "@/hooks/useProfile";
+import { dealScreenFor } from "@/lib/deal-routing";
+import type { DealParticipant } from "@/schemas/deal.schema";
+import { confirmCardPayment } from "@/services/payment.service";
+import { formatBaht } from "@/utils/format";
 
 function initialsOf(name: string) {
   const letters = name
     .split(/\s+/)
     .filter(Boolean)
     .map((part) => part[0])
-    .join('');
-  return letters.slice(0, 2).toUpperCase() || '?';
+    .join("");
+  return letters.slice(0, 2).toUpperCase() || "?";
 }
 
 function secondsUntil(isoDate: string | null | undefined, now: number) {
@@ -38,16 +45,16 @@ function secondsUntil(isoDate: string | null | undefined, now: number) {
 
 function participantDetail(participant: DealParticipant) {
   switch (participant.status) {
-    case 'HOST':
-      return 'Deal creator';
-    case 'HELD':
-    case 'RECEIVED':
-      return 'Payment complete';
-    case 'RESERVED':
-    case 'PAYMENT_PENDING':
-      return 'Waiting for payment';
+    case "HOST":
+      return "Deal creator";
+    case "HELD":
+    case "RECEIVED":
+      return "Payment complete";
+    case "RESERVED":
+    case "PAYMENT_PENDING":
+      return "Waiting for payment";
     default:
-      return '';
+      return "";
   }
 }
 
@@ -61,14 +68,20 @@ export default function JoinerDealScreen() {
   const payDeal = usePayDeal();
   const leaveDeal = useLeaveDeal();
   const now = useNow();
-  const [showCheckout, setShowCheckout] = useState(false);
+  // One sheet for every step: confirm the join, pay, then the card sheet.
+  const [sheet, setSheet] = useState<
+    "confirmJoin" | "checkout" | "card" | null
+  >(null);
+  const [isConfirmingCard, setIsConfirmingCard] = useState(false);
+  // From PY5; the card sheet confirms the payment with it.
+  const [clientSecret, setClientSecret] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   const deal = dealQuery.data;
 
   if (!deal) {
     return (
-      <SafeAreaView edges={['top', 'bottom']} style={styles.safeArea}>
+      <SafeAreaView edges={["top", "bottom"]} style={styles.safeArea}>
         <View style={styles.centered}>
           {dealQuery.isError ? (
             <>
@@ -76,7 +89,7 @@ export default function JoinerDealScreen() {
               <Text style={styles.stateMessage}>
                 {getErrorMessage(
                   dealQuery.error,
-                  'Something went wrong. Please try again.',
+                  "Something went wrong. Please try again.",
                 )}
               </Text>
               <Pressable
@@ -104,23 +117,26 @@ export default function JoinerDealScreen() {
 
   // Hosts, paid participants and closed deals have their own screens.
   const screen = dealScreenFor(deal);
-  if (screen !== '/deal/joiner') {
+  if (screen !== "/deal/joiner") {
     return <Redirect href={{ pathname: screen, params: { id: deal.id } }} />;
   }
 
   const me = deal.me;
-  const isReserved = me?.status === 'RESERVED';
-  const isPaying = me?.status === 'PAYMENT_PENDING';
+  const isReserved = me?.status === "RESERVED";
+  const isPaying = me?.status === "PAYMENT_PENDING";
   const hasSlot = isReserved || isPaying;
-  const canJoin = me ? me.actions.canJoin : (deal.actionsIfNotJoined?.canJoin ?? false);
+  const canJoin = me
+    ? me.actions.canJoin
+    : (deal.actionsIfNotJoined?.canJoin ?? false);
   const canPay = me?.actions.canPay ?? false;
   const canLeave = me?.actions.canLeave ?? false;
   const amountToPay = hasSlot && me ? me.amountToPay : deal.pricePerSlot;
   const paySeconds = secondsUntil(me?.reservedUntil, now);
-  const reservationExpired = hasSlot && Boolean(me?.reservedUntil) && paySeconds === 0;
+  const reservationExpired =
+    hasSlot && Boolean(me?.reservedUntil) && paySeconds === 0;
   const countdown = formatTime(paySeconds);
 
-  const category = deal.category === 'FOOD' ? 'Food' : 'Drink';
+  const category = deal.category === "FOOD" ? "Food" : "Drink";
   const dealSeconds = secondsUntil(deal.expiresAt, now);
   const dealDuration = Math.max(
     1,
@@ -152,9 +168,21 @@ export default function JoinerDealScreen() {
     }
   };
 
-  const join = () => {
+  const openJoinConfirmation = () => {
     resetErrors();
-    joinDeal.mutate(deal.id, { onSuccess: () => setShowCheckout(true) });
+    setSheet("confirmJoin");
+  };
+
+  const closeSheet = () => {
+    if (joinDeal.isPending || isConfirmingCard) return;
+    setSheet(null);
+  };
+
+  const confirmJoin = () => {
+    joinDeal.mutate(deal.id, {
+      onSuccess: () => setSheet("checkout"),
+      onError: () => setSheet(null),
+    });
   };
 
   const payNow = () => {
@@ -163,30 +191,50 @@ export default function JoinerDealScreen() {
     resetErrors();
     payDeal.mutate(
       { paymentId, dealId: deal.id },
-      { onSettled: () => setShowCheckout(false) },
+      {
+        onSuccess: (payment) => {
+          setClientSecret(payment.clientSecret);
+          setSheet("card");
+        },
+        onError: () => setSheet(null),
+      },
     );
+  };
+
+  // The result arrives via the webhook, so the page polls until HELD.
+  const payWithCard = async () => {
+    if (!clientSecret) return;
+    setIsConfirmingCard(true);
+    try {
+      await confirmCardPayment(clientSecret);
+      setClientSecret(null);
+      setSheet(null);
+      void dealQuery.refetch();
+    } finally {
+      setIsConfirmingCard(false);
+    }
   };
 
   const confirmLeave = () => {
     Alert.alert(
-      'Leave this deal?',
-      'Your slot will be released for someone else.',
+      "Leave this deal?",
+      "Your slot will be released for someone else.",
       [
-        { style: 'cancel', text: 'Stay' },
+        { style: "cancel", text: "Stay" },
         {
           onPress: () => {
             resetErrors();
             leaveDeal.mutate(deal.id);
           },
-          style: 'destructive',
-          text: 'Leave Deal',
+          style: "destructive",
+          text: "Leave Deal",
         },
       ],
     );
   };
 
   return (
-    <SafeAreaView edges={['top', 'bottom']} style={styles.safeArea}>
+    <SafeAreaView edges={["top", "bottom"]} style={styles.safeArea}>
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         refreshControl={
@@ -211,7 +259,7 @@ export default function JoinerDealScreen() {
             </Pressable>
             <View style={styles.joinStatus}>
               <Text style={styles.joinStatusText}>
-                {isPaying ? 'PAYING' : isReserved ? 'RESERVED' : 'JOINING'}
+                {isPaying ? "PAYING" : isReserved ? "RESERVED" : "JOINING"}
               </Text>
             </View>
           </View>
@@ -227,7 +275,9 @@ export default function JoinerDealScreen() {
               </Text>
             </View>
             <View style={styles.priceInfo}>
-              <Text style={styles.totalPrice}>{formatBaht(deal.totalPrice)}</Text>
+              <Text style={styles.totalPrice}>
+                {formatBaht(deal.totalPrice)}
+              </Text>
               <Text style={styles.totalPriceLabel}>TOTAL PRICE</Text>
             </View>
           </View>
@@ -242,12 +292,15 @@ export default function JoinerDealScreen() {
                 <Text style={styles.timerValue}>{formatTime(dealSeconds)}</Text>
               </View>
               <Text style={styles.activeBadge}>
-                {deal.status === 'LOCKED' ? 'Reserved' : 'Active'}
+                {deal.status === "LOCKED" ? "Reserved" : "Active"}
               </Text>
             </View>
             <View style={styles.progressTrack}>
               <View
-                style={[styles.progressValue, { width: `${dealExpiryProgress}%` }]}
+                style={[
+                  styles.progressValue,
+                  { width: `${dealExpiryProgress}%` },
+                ]}
               />
             </View>
           </View>
@@ -272,23 +325,27 @@ export default function JoinerDealScreen() {
             <View style={styles.participantCard}>
               {deal.participants.map((participant, index) => {
                 const isCurrent =
-                  hasSlot && Boolean(myUserId) && participant.userId === myUserId;
+                  hasSlot &&
+                  Boolean(myUserId) &&
+                  participant.userId === myUserId;
                 return (
                   <ParticipantRow
                     badge={
                       isCurrent
                         ? isPaying
-                          ? 'Processing'
+                          ? "Processing"
                           : `Pay in ${countdown}`
                         : undefined
                     }
-                    detail={isCurrent ? '' : participantDetail(participant)}
+                    detail={isCurrent ? "" : participantDetail(participant)}
                     initials={initialsOf(participant.name)}
                     isCurrent={isCurrent}
-                    isHost={participant.role === 'HOST'}
+                    isHost={participant.role === "HOST"}
                     key={participant.slotNo}
-                    last={openSlots === 0 && index === deal.participants.length - 1}
-                    name={isCurrent ? 'You' : participant.name}
+                    last={
+                      openSlots === 0 && index === deal.participants.length - 1
+                    }
+                    name={isCurrent ? "You" : participant.name}
                   />
                 );
               })}
@@ -308,13 +365,28 @@ export default function JoinerDealScreen() {
 
           {actionError ? (
             <Text accessibilityRole="alert" style={styles.actionError}>
-              {getErrorMessage(actionError, 'Something went wrong. Please try again.')}
+              {getErrorMessage(
+                actionError,
+                "Something went wrong. Please try again.",
+              )}
             </Text>
           ) : null}
 
           {hasSlot ? (
             <>
-              {isPaying ? (
+              {isPaying && clientSecret ? (
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => setSheet("card")}
+                  style={({ pressed }) => [
+                    styles.primaryButton,
+                    pressed && styles.buttonPressed,
+                  ]}
+                >
+                  <Icon color="#fff" name="card" size={18} />
+                  <Text style={styles.primaryButtonText}>Continue payment</Text>
+                </Pressable>
+              ) : isPaying ? (
                 <View style={styles.processingNote}>
                   <ActivityIndicator color="#b45309" size="small" />
                   <Text style={styles.processingText}>
@@ -324,22 +396,26 @@ export default function JoinerDealScreen() {
               ) : (
                 <Pressable
                   accessibilityRole="button"
-                  accessibilityState={{ busy: payDeal.isPending, disabled: !canPay || reservationExpired || isBusy }}
+                  accessibilityState={{
+                    busy: payDeal.isPending,
+                    disabled: !canPay || reservationExpired || isBusy,
+                  }}
                   disabled={!canPay || reservationExpired || isBusy}
                   onPress={payNow}
                   style={({ pressed }) => [
                     styles.primaryButton,
-                    (!canPay || reservationExpired || isBusy) && styles.primaryButtonDisabled,
+                    (!canPay || reservationExpired || isBusy) &&
+                      styles.primaryButtonDisabled,
                     pressed && styles.buttonPressed,
                   ]}
                 >
                   <Icon color="#fff" name="card" size={18} />
                   <Text style={styles.primaryButtonText}>
                     {payDeal.isPending
-                      ? 'Paying…'
+                      ? "Paying…"
                       : reservationExpired
-                        ? 'Reservation expired'
-                        : 'Pay Now'}
+                        ? "Reservation expired"
+                        : "Pay Now"}
                   </Text>
                 </Pressable>
               )}
@@ -351,7 +427,7 @@ export default function JoinerDealScreen() {
                   style={styles.leaveButton}
                 >
                   <Text style={styles.leaveButtonText}>
-                    {leaveDeal.isPending ? 'Leaving…' : 'Leave Deal'}
+                    {leaveDeal.isPending ? "Leaving…" : "Leave Deal"}
                   </Text>
                 </Pressable>
               ) : null}
@@ -359,9 +435,12 @@ export default function JoinerDealScreen() {
           ) : (
             <Pressable
               accessibilityRole="button"
-              accessibilityState={{ busy: joinDeal.isPending, disabled: !canJoin || isBusy }}
+              accessibilityState={{
+                busy: joinDeal.isPending,
+                disabled: !canJoin || isBusy,
+              }}
               disabled={!canJoin || isBusy}
-              onPress={join}
+              onPress={openJoinConfirmation}
               style={({ pressed }) => [
                 styles.primaryButton,
                 (!canJoin || isBusy) && styles.primaryButtonDisabled,
@@ -370,13 +449,11 @@ export default function JoinerDealScreen() {
             >
               <Icon color="#fff" name="people" size={18} />
               <Text style={styles.primaryButtonText}>
-                {joinDeal.isPending
-                  ? 'Joining…'
-                  : canJoin
-                    ? 'Join Deal'
-                    : openSlots === 0
-                      ? 'Deal is full'
-                      : 'Not available'}
+                {canJoin
+                  ? "Join Deal"
+                  : openSlots === 0
+                    ? "Deal is full"
+                    : "Not available"}
               </Text>
             </Pressable>
           )}
@@ -385,52 +462,111 @@ export default function JoinerDealScreen() {
 
       <Modal
         animationType="slide"
-        onRequestClose={() => setShowCheckout(false)}
+        onRequestClose={closeSheet}
         transparent
-        visible={showCheckout && isReserved}
+        visible={
+          sheet === "confirmJoin" ||
+          (sheet === "checkout" && isReserved) ||
+          (sheet === "card" && Boolean(clientSecret))
+        }
       >
         <View style={styles.modalRoot}>
           <Pressable
-            accessibilityLabel="Close checkout"
+            accessibilityLabel="Close"
             accessibilityRole="button"
-            onPress={() => setShowCheckout(false)}
+            onPress={closeSheet}
             style={styles.modalBackdrop}
           />
-          <View style={styles.checkoutCard}>
-            <View style={styles.checkoutHandle} />
-            <View style={styles.checkoutWalletIcon}>
-              <Icon color="#db2777" name="wallet" size={25} />
-            </View>
-            <Text style={styles.checkoutAmountLabel}>AMOUNT TO PAY</Text>
-            <Text style={styles.checkoutAmount}>{formatBaht(amountToPay)}</Text>
-            <Text style={styles.checkoutDescription}>
-              Your exact share of the {formatBaht(deal.totalPrice)} total
-            </Text>
-            <Pressable
-              accessibilityRole="button"
-              disabled={!canPay || reservationExpired || isBusy}
-              onPress={payNow}
-              style={({ pressed }) => [
-                styles.primaryButton,
-                styles.checkoutPayButton,
-                (!canPay || reservationExpired || isBusy) && styles.primaryButtonDisabled,
-                pressed && styles.buttonPressed,
-              ]}
-            >
-              <Icon color="#fff" name="card" size={18} />
-              <Text style={styles.primaryButtonText}>
-                {payDeal.isPending ? 'Paying…' : 'Pay Now'}
+          {sheet === "card" ? (
+            <MockPaymentSheet
+              amount={amountToPay}
+              isProcessing={isConfirmingCard}
+              onCancel={closeSheet}
+              onPay={() => void payWithCard()}
+            />
+          ) : sheet === "confirmJoin" ? (
+            <View style={styles.checkoutCard}>
+              <View style={styles.checkoutHandle} />
+              <View style={styles.checkoutWalletIcon}>
+                <Icon color="#db2777" name="people" size={25} />
+              </View>
+              <Text style={styles.checkoutAmountLabel}>JOIN THIS DEAL?</Text>
+              <Text style={styles.checkoutAmount}>
+                {formatBaht(amountToPay)}
               </Text>
-              <Text style={styles.checkoutCountdown}>{countdown}</Text>
-            </Pressable>
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => setShowCheckout(false)}
-              style={styles.checkoutCancelButton}
-            >
-              <Text style={styles.checkoutCancelText}>Cancel</Text>
-            </Pressable>
-          </View>
+              <Text style={styles.checkoutDescription}>
+                Joining reserves your slot in {deal.dealName}. You pay your
+                share on the next step.
+              </Text>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityState={{
+                  busy: joinDeal.isPending,
+                  disabled: joinDeal.isPending,
+                }}
+                disabled={joinDeal.isPending}
+                onPress={confirmJoin}
+                style={({ pressed }) => [
+                  styles.primaryButton,
+                  styles.checkoutPayButton,
+                  joinDeal.isPending && styles.primaryButtonDisabled,
+                  pressed && styles.buttonPressed,
+                ]}
+              >
+                <Icon color="#fff" name="people" size={18} />
+                <Text style={styles.primaryButtonText}>
+                  {joinDeal.isPending ? "Joining…" : "Confirm & Join"}
+                </Text>
+              </Pressable>
+              <Pressable
+                accessibilityRole="button"
+                disabled={joinDeal.isPending}
+                onPress={closeSheet}
+                style={styles.checkoutCancelButton}
+              >
+                <Text style={styles.checkoutCancelText}>Cancel</Text>
+              </Pressable>
+            </View>
+          ) : (
+            <View style={styles.checkoutCard}>
+              <View style={styles.checkoutHandle} />
+              <View style={styles.checkoutWalletIcon}>
+                <Icon color="#db2777" name="wallet" size={25} />
+              </View>
+              <Text style={styles.checkoutAmountLabel}>AMOUNT TO PAY</Text>
+              <Text style={styles.checkoutAmount}>
+                {formatBaht(amountToPay)}
+              </Text>
+              <Text style={styles.checkoutDescription}>
+                Your exact share of the {formatBaht(deal.totalPrice)} total
+              </Text>
+              <Pressable
+                accessibilityRole="button"
+                disabled={!canPay || reservationExpired || isBusy}
+                onPress={payNow}
+                style={({ pressed }) => [
+                  styles.primaryButton,
+                  styles.checkoutPayButton,
+                  (!canPay || reservationExpired || isBusy) &&
+                    styles.primaryButtonDisabled,
+                  pressed && styles.buttonPressed,
+                ]}
+              >
+                <Icon color="#fff" name="card" size={18} />
+                <Text style={styles.primaryButtonText}>
+                  {payDeal.isPending ? "Paying…" : "Pay Now"}
+                </Text>
+                <Text style={styles.checkoutCountdown}>{countdown}</Text>
+              </Pressable>
+              <Pressable
+                accessibilityRole="button"
+                onPress={closeSheet}
+                style={styles.checkoutCancelButton}
+              >
+                <Text style={styles.checkoutCancelText}>Cancel</Text>
+              </Pressable>
+            </View>
+          )}
         </View>
       </Modal>
     </SafeAreaView>
@@ -443,8 +579,8 @@ function firstParam(value?: string | string[]) {
 
 function formatTime(seconds: number) {
   const hours = Math.floor(seconds / 3600);
-  const minutes = String(Math.floor((seconds % 3600) / 60)).padStart(2, '0');
-  const remainingSeconds = String(seconds % 60).padStart(2, '0');
+  const minutes = String(Math.floor((seconds % 3600) / 60)).padStart(2, "0");
+  const remainingSeconds = String(seconds % 60).padStart(2, "0");
   return hours > 0
     ? `${hours}:${minutes}:${remainingSeconds}`
     : `${minutes}:${remainingSeconds}`;
@@ -536,7 +672,7 @@ function Icon({
   size,
 }: {
   color: string;
-  name: 'back' | 'card' | 'clock' | 'people' | 'wallet';
+  name: "back" | "card" | "clock" | "people" | "wallet";
   size: number;
 }) {
   return (
@@ -550,26 +686,26 @@ function Icon({
       viewBox="0 0 24 24"
       width={size}
     >
-      {name === 'back' ? <Path d="m15 18-6-6 6-6" /> : null}
-      {name === 'card' ? (
+      {name === "back" ? <Path d="m15 18-6-6 6-6" /> : null}
+      {name === "card" ? (
         <>
           <Rect height="14" rx="2" width="18" x="3" y="5" />
           <Path d="M3 10h18M7 15h3" />
         </>
       ) : null}
-      {name === 'clock' ? (
+      {name === "clock" ? (
         <>
           <Circle cx="12" cy="12" r="9" />
           <Path d="M12 7v5l3 2" />
         </>
       ) : null}
-      {name === 'people' ? (
+      {name === "people" ? (
         <>
           <Circle cx="9" cy="8" r="3" />
           <Path d="M3 20v-2a6 6 0 0 1 12 0v2M16 5a3 3 0 0 1 0 6M17 14a5 5 0 0 1 4 5v1" />
         </>
       ) : null}
-      {name === 'wallet' ? (
+      {name === "wallet" ? (
         <>
           <Path d="M4 6h14a2 2 0 0 1 2 2v11H4a2 2 0 0 1-2-2V6a3 3 0 0 1 3-3h12" />
           <Path d="M15 11h7v5h-7a2.5 2.5 0 0 1 0-5Z" />
@@ -581,7 +717,7 @@ function Icon({
 
 const styles = StyleSheet.create({
   safeArea: {
-    backgroundColor: '#fff',
+    backgroundColor: "#fff",
     flex: 1,
   },
   scrollContent: {
@@ -589,292 +725,292 @@ const styles = StyleSheet.create({
   },
   hero: {
     height: 208,
-    position: 'relative',
+    position: "relative",
   },
   dealVisual: {
-    alignItems: 'center',
-    backgroundColor: '#fce7f3',
-    height: '100%',
-    justifyContent: 'center',
-    overflow: 'hidden',
+    alignItems: "center",
+    backgroundColor: "#fce7f3",
+    height: "100%",
+    justifyContent: "center",
+    overflow: "hidden",
   },
   visualCircleLarge: {
-    backgroundColor: 'rgba(244, 114, 182, 0.65)',
+    backgroundColor: "rgba(244, 114, 182, 0.65)",
     borderRadius: 999,
     height: 112,
-    position: 'absolute',
+    position: "absolute",
     right: -32,
     top: 16,
     width: 112,
   },
   visualCircleSmall: {
-    backgroundColor: '#fbcfe8',
+    backgroundColor: "#fbcfe8",
     borderRadius: 999,
     bottom: 12,
     height: 80,
     left: 16,
-    position: 'absolute',
+    position: "absolute",
     width: 80,
   },
   visualPlate: {
-    alignItems: 'center',
-    backgroundColor: '#fff',
+    alignItems: "center",
+    backgroundColor: "#fff",
     borderRadius: 64,
     elevation: 10,
     height: 128,
-    justifyContent: 'center',
-    shadowColor: '#9d174d',
+    justifyContent: "center",
+    shadowColor: "#9d174d",
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.15,
     shadowRadius: 12,
     width: 128,
   },
   visualFood: {
-    backgroundColor: '#ec4899',
-    borderColor: '#fdf2f8',
+    backgroundColor: "#ec4899",
+    borderColor: "#fdf2f8",
     borderRadius: 44,
     borderWidth: 6,
     height: 80,
-    overflow: 'hidden',
+    overflow: "hidden",
     width: 80,
   },
   foodTop: {
-    backgroundColor: 'rgba(251, 207, 232, 0.8)',
+    backgroundColor: "rgba(251, 207, 232, 0.8)",
     borderTopLeftRadius: 40,
     borderTopRightRadius: 40,
-    height: '50%',
-    width: '100%',
+    height: "50%",
+    width: "100%",
   },
   foodLine: {
-    alignSelf: 'center',
-    backgroundColor: '#be185d',
+    alignSelf: "center",
+    backgroundColor: "#be185d",
     borderRadius: 6,
     height: 6,
     marginTop: 4,
-    width: '66%',
+    width: "66%",
   },
   foodLineShort: {
-    alignSelf: 'center',
-    backgroundColor: '#f9a8d4',
+    alignSelf: "center",
+    backgroundColor: "#f9a8d4",
     borderRadius: 6,
     height: 6,
     marginTop: 4,
-    width: '50%',
+    width: "50%",
   },
   heroActions: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
     left: 20,
-    position: 'absolute',
+    position: "absolute",
     right: 20,
     top: 8,
   },
   backButton: {
-    alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.92)',
+    alignItems: "center",
+    backgroundColor: "rgba(255, 255, 255, 0.92)",
     borderRadius: 20,
     elevation: 2,
     height: 40,
-    justifyContent: 'center',
-    shadowColor: '#0f172a',
+    justifyContent: "center",
+    shadowColor: "#0f172a",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
     width: 40,
   },
   joinStatus: {
-    backgroundColor: 'rgba(255, 255, 255, 0.92)',
+    backgroundColor: "rgba(255, 255, 255, 0.92)",
     borderRadius: 999,
     elevation: 2,
     paddingHorizontal: 12,
     paddingVertical: 8,
-    shadowColor: '#0f172a',
+    shadowColor: "#0f172a",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
   },
   joinStatusText: {
-    color: '#be185d',
+    color: "#be185d",
     fontSize: 10,
-    fontWeight: '800',
+    fontWeight: "800",
   },
   pickupBadge: {
-    alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.92)',
+    alignItems: "center",
+    backgroundColor: "rgba(255, 255, 255, 0.92)",
     borderRadius: 999,
     bottom: 12,
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: 5,
     paddingHorizontal: 12,
     paddingVertical: 6,
-    position: 'absolute',
+    position: "absolute",
     right: 20,
   },
   pickupDot: {
-    backgroundColor: '#10b981',
+    backgroundColor: "#10b981",
     borderRadius: 4,
     height: 6,
     width: 6,
   },
   pickupBadgeText: {
-    color: '#334155',
+    color: "#334155",
     fontSize: 11,
-    fontWeight: '800',
+    fontWeight: "800",
   },
   content: {
-    backgroundColor: '#fff',
+    backgroundColor: "#fff",
     borderTopLeftRadius: 32,
     borderTopRightRadius: 32,
     marginTop: -20,
     paddingHorizontal: 20,
     paddingTop: 24,
-    position: 'relative',
+    position: "relative",
   },
   dealHeader: {
-    alignItems: 'flex-start',
-    flexDirection: 'row',
+    alignItems: "flex-start",
+    flexDirection: "row",
     gap: 12,
-    justifyContent: 'space-between',
+    justifyContent: "space-between",
   },
   dealInfo: {
     flex: 1,
   },
   categoryBadge: {
-    alignSelf: 'flex-start',
-    backgroundColor: '#fce7f3',
+    alignSelf: "flex-start",
+    backgroundColor: "#fce7f3",
     borderRadius: 999,
-    color: '#be185d',
+    color: "#be185d",
     fontSize: 10,
-    fontWeight: '800',
-    overflow: 'hidden',
+    fontWeight: "800",
+    overflow: "hidden",
     paddingHorizontal: 10,
     paddingVertical: 4,
-    textTransform: 'uppercase',
+    textTransform: "uppercase",
   },
   dealName: {
-    color: '#020617',
+    color: "#020617",
     fontSize: 22,
-    fontWeight: '800',
+    fontWeight: "800",
     letterSpacing: -0.5,
     marginTop: 10,
   },
   dealDescription: {
-    color: '#94a3b8',
+    color: "#94a3b8",
     fontSize: 13,
-    fontWeight: '500',
+    fontWeight: "500",
     marginTop: 4,
   },
   priceInfo: {
-    alignItems: 'flex-end',
+    alignItems: "flex-end",
     flexShrink: 0,
   },
   totalPrice: {
-    color: '#020617',
+    color: "#020617",
     fontSize: 22,
-    fontWeight: '800',
+    fontWeight: "800",
   },
   totalPriceLabel: {
-    color: '#94a3b8',
+    color: "#94a3b8",
     fontSize: 9,
-    fontWeight: '700',
+    fontWeight: "700",
     marginTop: 2,
   },
   timerCard: {
-    backgroundColor: '#020617',
+    backgroundColor: "#020617",
     borderRadius: 24,
     elevation: 10,
     marginTop: 18,
-    overflow: 'hidden',
-    shadowColor: '#cbd5e1',
+    overflow: "hidden",
+    shadowColor: "#cbd5e1",
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.28,
     shadowRadius: 12,
   },
   timerRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
+    alignItems: "center",
+    flexDirection: "row",
     gap: 12,
     padding: 16,
   },
   timerIcon: {
-    alignItems: 'center',
-    backgroundColor: 'rgba(252, 211, 77, 0.15)',
+    alignItems: "center",
+    backgroundColor: "rgba(252, 211, 77, 0.15)",
     borderRadius: 22,
     height: 44,
-    justifyContent: 'center',
+    justifyContent: "center",
     width: 44,
   },
   timerInfo: {
     flex: 1,
   },
   timerLabel: {
-    color: '#94a3b8',
+    color: "#94a3b8",
     fontSize: 9,
-    fontWeight: '800',
+    fontWeight: "800",
     letterSpacing: 1.4,
   },
   timerValue: {
-    color: '#fcd34d',
+    color: "#fcd34d",
     fontSize: 22,
-    fontVariant: ['tabular-nums'],
-    fontWeight: '800',
+    fontVariant: ["tabular-nums"],
+    fontWeight: "800",
     letterSpacing: 2,
     marginTop: 2,
   },
   activeBadge: {
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    backgroundColor: "rgba(255, 255, 255, 0.1)",
     borderRadius: 999,
-    color: '#cbd5e1',
+    color: "#cbd5e1",
     fontSize: 10,
-    fontWeight: '800',
-    overflow: 'hidden',
+    fontWeight: "800",
+    overflow: "hidden",
     paddingHorizontal: 12,
     paddingVertical: 6,
   },
   progressTrack: {
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    backgroundColor: "rgba(255, 255, 255, 0.1)",
     height: 6,
   },
   progressValue: {
-    backgroundColor: '#fcd34d',
+    backgroundColor: "#fcd34d",
     borderBottomRightRadius: 4,
     borderTopRightRadius: 4,
-    height: '100%',
+    height: "100%",
   },
   amountCard: {
-    alignItems: 'center',
-    backgroundColor: '#fdf2f8',
-    borderColor: '#fce7f3',
+    alignItems: "center",
+    backgroundColor: "#fdf2f8",
+    borderColor: "#fce7f3",
     borderRadius: 24,
     borderWidth: 1,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    justifyContent: "space-between",
     marginBottom: 20,
     marginTop: 16,
     padding: 20,
   },
   amountLabel: {
-    color: '#ec4899',
+    color: "#ec4899",
     fontSize: 10,
-    fontWeight: '800',
+    fontWeight: "800",
     letterSpacing: 1.4,
   },
   amountValue: {
-    color: '#be185d',
+    color: "#be185d",
     fontSize: 30,
-    fontWeight: '800',
+    fontWeight: "800",
     letterSpacing: -0.5,
     marginTop: 4,
   },
   walletIcon: {
-    alignItems: 'center',
-    backgroundColor: '#db2777',
+    alignItems: "center",
+    backgroundColor: "#db2777",
     borderRadius: 24,
     elevation: 4,
     height: 48,
-    justifyContent: 'center',
-    shadowColor: '#fbcfe8',
+    justifyContent: "center",
+    shadowColor: "#fbcfe8",
     shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.8,
     shadowRadius: 5,
@@ -884,70 +1020,70 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   sectionHeading: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
     marginBottom: 10,
   },
   sectionTitle: {
-    color: '#020617',
+    color: "#020617",
     fontSize: 15,
-    fontWeight: '800',
+    fontWeight: "800",
   },
   sectionCount: {
-    color: '#94a3b8',
+    color: "#94a3b8",
     fontSize: 11,
-    fontWeight: '700',
+    fontWeight: "700",
   },
   participantCard: {
-    backgroundColor: '#fff',
-    borderColor: '#f1f5f9',
+    backgroundColor: "#fff",
+    borderColor: "#f1f5f9",
     borderRadius: 24,
     borderWidth: 1,
     elevation: 2,
-    overflow: 'hidden',
-    shadowColor: '#0f172a',
+    overflow: "hidden",
+    shadowColor: "#0f172a",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.05,
     shadowRadius: 4,
   },
   participantRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
+    alignItems: "center",
+    flexDirection: "row",
     gap: 12,
     minHeight: 58,
     paddingHorizontal: 14,
     paddingVertical: 12,
   },
   participantRowBorder: {
-    borderBottomColor: '#f1f5f9',
+    borderBottomColor: "#f1f5f9",
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
   participantAvatar: {
-    alignItems: 'center',
-    backgroundColor: '#fce7f3',
+    alignItems: "center",
+    backgroundColor: "#fce7f3",
     borderRadius: 20,
     height: 40,
-    justifyContent: 'center',
+    justifyContent: "center",
     width: 40,
   },
   currentParticipantAvatar: {
-    backgroundColor: '#fbcfe8',
+    backgroundColor: "#fbcfe8",
   },
   participantInitials: {
-    color: '#9d174d',
+    color: "#9d174d",
     fontSize: 9,
-    fontWeight: '800',
+    fontWeight: "800",
   },
   emptyAvatar: {
-    alignItems: 'center',
-    backgroundColor: '#f8fafc',
-    borderColor: '#e2e8f0',
+    alignItems: "center",
+    backgroundColor: "#f8fafc",
+    borderColor: "#e2e8f0",
     borderRadius: 20,
-    borderStyle: 'dashed',
+    borderStyle: "dashed",
     borderWidth: 1,
     height: 40,
-    justifyContent: 'center',
+    justifyContent: "center",
     width: 40,
   },
   participantInfo: {
@@ -955,138 +1091,138 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   participantName: {
-    color: '#0f172a',
+    color: "#0f172a",
     fontSize: 13,
-    fontWeight: '800',
+    fontWeight: "800",
   },
   emptyParticipantName: {
-    color: '#94a3b8',
+    color: "#94a3b8",
   },
   participantDetail: {
-    color: '#94a3b8',
+    color: "#94a3b8",
     fontSize: 10,
-    fontWeight: '600',
+    fontWeight: "600",
     marginTop: 2,
   },
   hostBadge: {
-    backgroundColor: '#f1f5f9',
+    backgroundColor: "#f1f5f9",
     borderRadius: 999,
     paddingHorizontal: 10,
     paddingVertical: 5,
   },
   hostBadgeText: {
-    color: '#64748b',
+    color: "#64748b",
     fontSize: 10,
-    fontWeight: '800',
+    fontWeight: "800",
   },
   paymentBadge: {
-    alignItems: 'center',
-    backgroundColor: '#fff7ed',
+    alignItems: "center",
+    backgroundColor: "#fff7ed",
     borderRadius: 999,
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: 4,
     paddingHorizontal: 9,
     paddingVertical: 6,
   },
   paymentBadgeText: {
-    color: '#b45309',
+    color: "#b45309",
     fontSize: 9,
-    fontVariant: ['tabular-nums'],
-    fontWeight: '800',
+    fontVariant: ["tabular-nums"],
+    fontWeight: "800",
   },
   primaryButton: {
-    alignItems: 'center',
-    backgroundColor: '#db2777',
+    alignItems: "center",
+    backgroundColor: "#db2777",
     borderRadius: 16,
     elevation: 8,
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: 8,
-    justifyContent: 'center',
+    justifyContent: "center",
     marginTop: 24,
     paddingVertical: 16,
-    shadowColor: '#fbcfe8',
+    shadowColor: "#fbcfe8",
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.55,
     shadowRadius: 10,
   },
   primaryButtonText: {
-    color: '#fff',
+    color: "#fff",
     fontSize: 14,
-    fontWeight: '800',
+    fontWeight: "800",
   },
   primaryButtonDisabled: {
     opacity: 0.5,
   },
   centered: {
-    alignItems: 'center',
+    alignItems: "center",
     flex: 1,
-    justifyContent: 'center',
+    justifyContent: "center",
     padding: 24,
   },
   stateTitle: {
-    color: '#0f172a',
+    color: "#0f172a",
     fontSize: 16,
-    fontWeight: '800',
+    fontWeight: "800",
   },
   stateMessage: {
-    color: '#64748b',
+    color: "#64748b",
     fontSize: 12,
     marginTop: 6,
-    textAlign: 'center',
+    textAlign: "center",
   },
   retryButton: {
-    alignSelf: 'stretch',
+    alignSelf: "stretch",
     marginTop: 18,
   },
   actionError: {
-    color: '#be185d',
+    color: "#be185d",
     fontSize: 12,
-    fontWeight: '600',
+    fontWeight: "600",
     marginBottom: 10,
-    textAlign: 'center',
+    textAlign: "center",
   },
   processingNote: {
-    alignItems: 'center',
-    backgroundColor: '#fffbeb',
+    alignItems: "center",
+    backgroundColor: "#fffbeb",
     borderRadius: 16,
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: 10,
     padding: 14,
   },
   processingText: {
-    color: '#b45309',
+    color: "#b45309",
     flex: 1,
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: "700",
   },
   buttonPressed: {
     opacity: 0.9,
     transform: [{ scale: 0.98 }],
   },
   leaveButton: {
-    alignItems: 'center',
+    alignItems: "center",
     paddingVertical: 16,
   },
   leaveButtonText: {
-    color: '#64748b',
+    color: "#64748b",
     fontSize: 11,
-    fontWeight: '800',
+    fontWeight: "800",
   },
   modalRoot: {
     flex: 1,
-    justifyContent: 'flex-end',
+    justifyContent: "flex-end",
   },
   modalBackdrop: {
-    backgroundColor: 'rgba(2, 6, 23, 0.5)',
+    backgroundColor: "rgba(2, 6, 23, 0.5)",
     bottom: 0,
     left: 0,
-    position: 'absolute',
+    position: "absolute",
     right: 0,
     top: 0,
   },
   checkoutCard: {
-    alignItems: 'center',
-    backgroundColor: '#fff',
+    alignItems: "center",
+    backgroundColor: "#fff",
     borderTopLeftRadius: 32,
     borderTopRightRadius: 32,
     paddingHorizontal: 24,
@@ -1094,69 +1230,69 @@ const styles = StyleSheet.create({
     paddingTop: 12,
   },
   checkoutHandle: {
-    backgroundColor: '#e2e8f0',
+    backgroundColor: "#e2e8f0",
     borderRadius: 3,
     height: 5,
     marginBottom: 20,
     width: 40,
   },
   checkoutWalletIcon: {
-    alignItems: 'center',
-    backgroundColor: '#fce7f3',
+    alignItems: "center",
+    backgroundColor: "#fce7f3",
     borderRadius: 28,
     height: 56,
-    justifyContent: 'center',
+    justifyContent: "center",
     width: 56,
   },
   checkoutAmountLabel: {
-    color: '#ec4899',
+    color: "#ec4899",
     fontSize: 11,
-    fontWeight: '800',
+    fontWeight: "800",
     letterSpacing: 1.5,
     marginTop: 18,
   },
   checkoutAmount: {
-    color: '#020617',
+    color: "#020617",
     fontSize: 36,
-    fontWeight: '800',
+    fontWeight: "800",
     letterSpacing: -0.8,
     marginTop: 4,
   },
   checkoutDescription: {
-    color: '#94a3b8',
+    color: "#94a3b8",
     fontSize: 11,
-    fontWeight: '600',
+    fontWeight: "600",
     marginTop: 6,
-    textAlign: 'center',
+    textAlign: "center",
   },
   checkoutPayButton: {
     marginTop: 24,
-    width: '100%',
+    width: "100%",
   },
   checkoutCountdown: {
-    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+    backgroundColor: "rgba(255, 255, 255, 0.15)",
     borderRadius: 999,
-    color: '#fff',
+    color: "#fff",
     fontSize: 11,
-    fontVariant: ['tabular-nums'],
-    fontWeight: '800',
-    overflow: 'hidden',
+    fontVariant: ["tabular-nums"],
+    fontWeight: "800",
+    overflow: "hidden",
     paddingHorizontal: 9,
     paddingVertical: 3,
   },
   checkoutCancelButton: {
-    alignItems: 'center',
-    backgroundColor: '#fff',
-    borderColor: '#e2e8f0',
+    alignItems: "center",
+    backgroundColor: "#fff",
+    borderColor: "#e2e8f0",
     borderRadius: 16,
     borderWidth: 1,
     marginTop: 12,
     paddingVertical: 14,
-    width: '100%',
+    width: "100%",
   },
   checkoutCancelText: {
-    color: '#334155',
+    color: "#334155",
     fontSize: 13,
-    fontWeight: '800',
+    fontWeight: "800",
   },
 });
