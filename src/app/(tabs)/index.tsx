@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useRouter } from 'expo-router';
 import {
   ActivityIndicator,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -13,42 +14,131 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
 
+import { getErrorMessage } from '@/api/errors';
 import { BrandMark } from '@/components/brand-mark';
-import { useAuth } from '@/hooks/useAuth';
-import { useNearbyDeals } from '@/hooks/useNearbyDeals';
-import type { DealCategory, NearbyDeal } from '@/types/deal.types';
+import { useCurrentLocation } from '@/hooks/useCurrentLocation';
+import { useDebouncedValue } from '@/hooks/useDebouncedValue';
+import { useNearbyDeals } from '@/hooks/useDeals';
+import type { DealCategory, NearbyDeal } from '@/schemas/deal.schema';
+import { formatBaht, formatDistance, formatTimeLeft } from '@/utils/format';
 
 type Category = 'All' | 'Food' | 'Drink';
 
-const categories: Category[] = ['All', 'Food', 'Drink'];
-const dealCategoryByFilter: Record<Category, DealCategory | undefined> = {
-  All: undefined,
+type Deal = {
+  id: string;
+  title: string;
+  subtitle: string;
+  price: string;
+  joined: string;
+  distance: string;
+  timeLeft: string;
+  emoji: string;
+  tint: string;
+  initials: string[];
+};
+
+const NEARBY_RADIUS_METERS = 500;
+
+const categoryValues: Record<Exclude<Category, 'All'>, DealCategory> = {
   Food: 'FOOD',
   Drink: 'DRINK',
 };
+
+function toDealCard(deal: NearbyDeal): Deal {
+  const isFood = deal.category === 'FOOD';
+  return {
+    id: deal.id,
+    title: deal.dealName,
+    subtitle: deal.details || (isFood ? 'Food' : 'Drink'),
+    price: formatBaht(deal.pricePerSlot),
+    joined: `${deal.joinedSlots} of ${deal.targetSlots} joined`,
+    distance: formatDistance(deal.distanceMeters),
+    timeLeft: formatTimeLeft(deal.expiresAt),
+    emoji: isFood ? '🍱' : '🧋',
+    tint: isFood ? '#fff0f6' : '#fff3ec',
+    initials: deal.participantInitials,
+  };
+}
+
+const categories: Category[] = ['All', 'Food', 'Drink'];
 const pink = '#d82f78';
-const exploreLocation = { lat: 13.78, lng: 100.54 };
 
 export default function HomeScreen() {
   const router = useRouter();
-  const { accessToken, isRestoring } = useAuth();
   const [category, setCategory] = useState<Category>('All');
   const [search, setSearch] = useState('');
-  const dealsQuery = useNearbyDeals({
-    ...exploreLocation,
-    radius: 500,
-    category: dealCategoryByFilter[category],
-    q: search.trim() || undefined,
-  });
-  const visibleDeals = dealsQuery.data?.items ?? [];
-  const isLoading = isRestoring || (Boolean(accessToken) && dealsQuery.isPending);
-  const now = dealsQuery.dataUpdatedAt || null;
+  const { coordinates, areaName, isLocating, permission, refreshLocation } =
+    useCurrentLocation();
+  const locationLabel =
+    areaName ??
+    (isLocating
+      ? 'Locating…'
+      : permission === 'denied'
+        ? 'Location off'
+        : 'Current location');
+
+  const query = useDebouncedValue(search.trim(), 300);
+  const nearbyDeals = useNearbyDeals(
+    coordinates
+      ? {
+          lat: coordinates.latitude,
+          lng: coordinates.longitude,
+          radius: NEARBY_RADIUS_METERS,
+          category: category === 'All' ? undefined : categoryValues[category],
+          q: query || undefined,
+        }
+      : null,
+  );
+  const visibleDeals = useMemo(
+    () => nearbyDeals.data?.items.map(toDealCard) ?? [],
+    [nearbyDeals.data],
+  );
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const refresh = async () => {
+    setIsRefreshing(true);
+    try {
+      await refreshLocation({ force: true });
+      await nearbyDeals.refetch();
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
+  const emptyState = !coordinates
+    ? permission === 'denied'
+      ? {
+          title: 'Location is off',
+          message: 'Turn on location in Settings to see deals near you.',
+        }
+      : null
+    : nearbyDeals.isError
+      ? {
+          title: 'Could not load deals',
+          message: getErrorMessage(
+            nearbyDeals.error,
+            'Something went wrong. Please try again.',
+          ),
+        }
+      : {
+          title: 'No deals found',
+          message: query || category !== 'All'
+            ? 'Try a different search or category.'
+            : 'No deals nearby yet. Create one!',
+        };
 
   return (
     <SafeAreaView edges={['top']} style={styles.safeArea}>
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
+        refreshControl={
+          <RefreshControl
+            onRefresh={() => void refresh()}
+            refreshing={isRefreshing}
+            tintColor={pink}
+          />
+        }
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.header}>
@@ -56,10 +146,11 @@ export default function HomeScreen() {
             <BrandMark compact />
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Current location: Ari, Bangkok"
+              accessibilityLabel={`Current location: ${locationLabel}`}
+              onPress={() => void refreshLocation({ force: true })}
               style={styles.locationButton}
             >
-              <Text style={styles.locationText}>Ari, Bangkok</Text>
+              <Text style={styles.locationText}>{locationLabel}</Text>
               <Text style={styles.chevron}>›</Text>
             </Pressable>
           </View>
@@ -130,122 +221,66 @@ export default function HomeScreen() {
 
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Nearby</Text>
-          {dealsQuery.data ? (
-            <Text style={styles.sectionCaption}>
-              {dealsQuery.data.total} deals
-            </Text>
-          ) : null}
+          <Text style={styles.sectionCaption}>
+            {nearbyDeals.data?.total ?? 0} deals
+          </Text>
         </View>
 
-        {isLoading ? (
-          <View style={styles.statusState}>
-            <ActivityIndicator color={pink} />
-            <Text style={styles.statusMessage}>Loading nearby deals...</Text>
-          </View>
-        ) : !accessToken ? (
-          <View style={styles.emptyState}>
-            <Text style={styles.emptyTitle}>Log in to explore deals</Text>
-            <Text style={styles.emptyMessage}>
-              Sign in to see deals shared by people nearby.
-            </Text>
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => router.replace('/(auth)/login')}
-              style={styles.retryButton}
-            >
-              <Text style={styles.retryButtonText}>Log in</Text>
-            </Pressable>
-          </View>
-        ) : dealsQuery.isError ? (
-          <View style={styles.emptyState}>
-            <Text accessibilityRole="alert" style={styles.emptyTitle}>
-              Could not load deals
-            </Text>
-            <Text style={styles.emptyMessage}>
-              {dealsQuery.error instanceof Error
-                ? dealsQuery.error.message
-                : 'Please try again.'}
-            </Text>
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => {
-                void dealsQuery.refetch();
-              }}
-              style={styles.retryButton}
-            >
-              <Text style={styles.retryButtonText}>Try again</Text>
-            </Pressable>
-          </View>
-        ) : visibleDeals.length > 0 ? (
+        {visibleDeals.length > 0 ? (
           <View style={styles.dealList}>
             {visibleDeals.map((deal) => (
               <DealCard
                 deal={deal}
                 key={deal.id}
-                now={now}
                 onPress={() =>
                   router.push({
-                    pathname: '/deal/joiner',
+                    pathname: '/deal/[id]',
                     params: { id: deal.id },
                   })
                 }
               />
             ))}
           </View>
-        ) : (
+        ) : nearbyDeals.isLoading || (!coordinates && isLocating) ? (
+          <ActivityIndicator color={pink} style={styles.loading} />
+        ) : emptyState ? (
           <View style={styles.emptyState}>
-            <Text style={styles.emptyTitle}>No deals found</Text>
-            <Text style={styles.emptyMessage}>Try a different search or category.</Text>
+            <Text style={styles.emptyTitle}>{emptyState.title}</Text>
+            <Text style={styles.emptyMessage}>{emptyState.message}</Text>
           </View>
-        )}
+        ) : null}
       </ScrollView>
     </SafeAreaView>
   );
 }
 
-function DealCard({
-  deal,
-  now,
-  onPress,
-}: {
-  deal: NearbyDeal;
-  now: number | null;
-  onPress: () => void;
-}) {
-  const isFood = deal.category === 'FOOD';
+function DealCard({ deal, onPress }: { deal: Deal; onPress: () => void }) {
   return (
     <Pressable
-      accessibilityLabel={`Open deal: ${deal.dealName}`}
+      accessibilityLabel={`Open deal: ${deal.title}`}
       accessibilityRole="button"
       onPress={onPress}
       style={styles.dealCard}
     >
-      <View
-        style={[
-          styles.dealArtwork,
-          { backgroundColor: isFood ? '#fff0f6' : '#fff3ec' },
-        ]}
-      >
-        <Text style={styles.dealEmoji}>{isFood ? '🍱' : '🧋'}</Text>
+      <View style={[styles.dealArtwork, { backgroundColor: deal.tint }]}>
+        <Text style={styles.dealEmoji}>{deal.emoji}</Text>
       </View>
       <View style={styles.dealDetails}>
         <View style={styles.timeRow}>
           <Text style={styles.clockIcon}>◷</Text>
-          <Text style={styles.timeText}>
-            {formatTimeLeft(deal.expiresAt, now)} left
-          </Text>
+          <Text style={styles.timeText}>{deal.timeLeft} left</Text>
         </View>
         <Text numberOfLines={1} style={styles.dealTitle}>
-          {deal.dealName}
+          {deal.title}
         </Text>
         <Text numberOfLines={1} style={styles.dealSubtitle}>
-          {deal.details ?? ''}
+          {deal.subtitle}
         </Text>
         <View style={styles.joinedRow}>
           <View style={styles.avatarStack}>
-            {deal.participantInitials.map((initial, index) => (
+            {deal.initials.map((initial, index) => (
               <View
-                key={initial}
+                key={`${initial}-${index}`}
                 style={[
                   styles.avatar,
                   index > 0 && styles.avatarOverlap,
@@ -256,37 +291,16 @@ function DealCard({
               </View>
             ))}
           </View>
-          <Text style={styles.joinedText}>
-            {deal.joinedSlots} of {deal.targetSlots} joined
-          </Text>
+          <Text style={styles.joinedText}>{deal.joined}</Text>
         </View>
       </View>
       <View style={styles.priceColumn}>
-        <Text style={styles.price}>฿{deal.pricePerSlot}</Text>
+        <Text style={styles.price}>{deal.price}</Text>
         <Text style={styles.perPerson}>per person</Text>
-        <Text style={styles.distance}>
-          ⌖ {formatDistance(deal.distanceMeters)}
-        </Text>
+        <Text style={styles.distance}>⌖ {deal.distance}</Text>
       </View>
     </Pressable>
   );
-}
-
-function formatTimeLeft(expiresAt: string, now: number | null) {
-  const expiresAtMs = Date.parse(expiresAt);
-  if (now === null || !Number.isFinite(expiresAtMs)) {
-    return '—';
-  }
-  const minutesLeft = Math.max(0, Math.ceil((expiresAtMs - now) / 60_000));
-  return minutesLeft < 60
-    ? `${minutesLeft} min`
-    : `${Math.ceil(minutesLeft / 60)} hr`;
-}
-
-function formatDistance(distanceMeters: number) {
-  return distanceMeters < 1000
-    ? `${Math.round(distanceMeters)} m`
-    : `${(distanceMeters / 1000).toFixed(1)} km`;
 }
 
 const styles = StyleSheet.create({
@@ -561,27 +575,7 @@ const styles = StyleSheet.create({
     marginTop: 5,
     textAlign: 'center',
   },
-  statusState: {
-    alignItems: 'center',
-    minHeight: 150,
-    justifyContent: 'center',
-  },
-  statusMessage: {
-    color: '#898594',
-    fontSize: 12,
-    marginTop: 10,
-  },
-  retryButton: {
-    alignItems: 'center',
-    backgroundColor: pink,
-    borderRadius: 16,
-    marginTop: 14,
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-  },
-  retryButtonText: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: '800',
+  loading: {
+    marginTop: 32,
   },
 });

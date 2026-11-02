@@ -4,7 +4,7 @@ export const endpoints = {
     register: "/api/auth/register",
   },
   deals: {
-    create: "/api/deals",
+    root: "/api/deals",
     nearby: "/api/deals/nearby",
     mine: "/api/deals/mine",
     byId: (dealId: string) => `/api/deals/${encodeURIComponent(dealId)}`,
@@ -17,17 +17,17 @@ export const endpoints = {
     receipt: (dealId: string) =>
       `/api/deals/${encodeURIComponent(dealId)}/receipt`,
   },
-  notifications: {
-    list: "/api/notifications",
-    preferences: "/api/notifications/preferences",
-    markRead: (notificationId: string) =>
-      `/api/notifications/${encodeURIComponent(notificationId)}/read`,
-  },
   payments: {
     pay: (paymentId: string) =>
       `/api/payments/${encodeURIComponent(paymentId)}/pay`,
     byId: (paymentId: string) =>
       `/api/payments/${encodeURIComponent(paymentId)}`,
+  },
+  notifications: {
+    list: "/api/notifications",
+    preferences: "/api/notifications/preferences",
+    markRead: (notificationId: string) =>
+      `/api/notifications/${encodeURIComponent(notificationId)}/read`,
   },
   users: {
     me: "/api/users/me",

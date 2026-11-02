@@ -2,7 +2,13 @@ import { isAxiosError, type AxiosInstance } from "axios";
 
 import { ApiError, toApiError } from "@/api/errors";
 import { useAuthStore } from "@/stores/auth.store";
-import { camelCaseKeys } from "@/utils/case";
+import { camelCaseKeys, snakeCaseKeys } from "@/utils/case";
+
+declare module "axios" {
+  interface AxiosRequestConfig {
+    keepRequestKeys?: boolean;
+  }
+}
 
 const getApiBaseUrl = () => {
   const baseUrl = process.env.EXPO_PUBLIC_API_BASE_URL?.replace(/\/+$/, "");
@@ -21,6 +27,10 @@ export function attachInterceptors(client: AxiosInstance) {
       config.headers.set("Authorization", `Bearer ${accessToken}`);
     }
 
+    if (!config.keepRequestKeys) {
+      config.data = snakeCaseKeys(config.data);
+      config.params = snakeCaseKeys(config.params);
+    }
     return config;
   });
 

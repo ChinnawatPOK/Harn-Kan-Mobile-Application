@@ -52,7 +52,11 @@ export default function CompletedDealScreen() {
           <Pressable
             accessibilityLabel="Back to my deals"
             accessibilityRole="button"
-            onPress={() => router.push('/(tabs)/my-deals')}
+            onPress={() =>
+              router.canGoBack()
+                ? router.back()
+                : router.replace('/(tabs)/my-deals')
+            }
             style={styles.backButton}
           >
             <Icon color="#be185d" name="back" size={20} />

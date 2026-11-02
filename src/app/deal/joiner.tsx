@@ -1,8 +1,11 @@
 import { useState } from 'react';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
 import {
+  ActivityIndicator,
+  Alert,
   Modal,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -10,82 +13,189 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Circle, Path, Rect } from 'react-native-svg';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
 
-import { DealApiState } from '@/components/deal-api-state';
-import {
-  StripePaymentSheetPayButton,
-  StripePaymentSheetProvider,
-} from '@/components/stripe-payment-sheet';
-import {
-  dealDetailQueryKey,
-  useDealDetails,
-} from '@/hooks/useDealDetails';
-import { joinDeal, leaveDeal } from '@/services/deal.service';
-import type { DealParticipantStatus } from '@/types/deal.types';
+import { getErrorMessage } from '@/api/errors';
+import { useDeal, useJoinDeal, useLeaveDeal, usePayDeal } from '@/hooks/useDeals';
+import { useNow } from '@/hooks/useNow';
+import { useProfile } from '@/hooks/useProfile';
+import { dealScreenFor } from '@/lib/deal-routing';
+import type { DealParticipant } from '@/schemas/deal.schema';
+import { formatBaht } from '@/utils/format';
+
+function initialsOf(name: string) {
+  const letters = name
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((part) => part[0])
+    .join('');
+  return letters.slice(0, 2).toUpperCase() || '?';
+}
+
+function secondsUntil(isoDate: string | null | undefined, now: number) {
+  if (!isoDate) return 0;
+  return Math.max(0, Math.floor((new Date(isoDate).getTime() - now) / 1000));
+}
+
+function participantDetail(participant: DealParticipant) {
+  switch (participant.status) {
+    case 'HOST':
+      return 'Deal creator';
+    case 'HELD':
+    case 'RECEIVED':
+      return 'Payment complete';
+    case 'RESERVED':
+    case 'PAYMENT_PENDING':
+      return 'Waiting for payment';
+    default:
+      return '';
+  }
+}
 
 export default function JoinerDealScreen() {
   const router = useRouter();
-  const queryClient = useQueryClient();
-  const params = useLocalSearchParams<{ id?: string | string[] }>();
-  const dealId = firstParam(params.id);
-  const dealQuery = useDealDetails(dealId);
+  const { id } = useLocalSearchParams<{ id: string }>();
+  const dealId = firstParam(id);
+  const dealQuery = useDeal(dealId);
+  const profile = useProfile();
+  const joinDeal = useJoinDeal();
+  const payDeal = usePayDeal();
+  const leaveDeal = useLeaveDeal();
+  const now = useNow();
   const [showCheckout, setShowCheckout] = useState(false);
-  const [paymentClientSecret, setPaymentClientSecret] = useState<string | null>(
-    null,
-  );
-  const joinMutation = useMutation({
-    mutationFn: () => {
-      if (!dealId) throw new Error('A deal ID is required.');
-      return joinDeal(dealId);
-    },
-    onSuccess: async (result) => {
-      queryClient.setQueryData(dealDetailQueryKey(result.deal.id), result.deal);
-      await queryClient.invalidateQueries({ queryKey: ['my-deals'] });
-      setShowCheckout(true);
-    },
-  });
-  const leaveMutation = useMutation({
-    mutationFn: () => {
-      if (!dealId) throw new Error('A deal ID is required.');
-      return leaveDeal(dealId);
-    },
-    onSuccess: async (updatedDeal) => {
-      queryClient.setQueryData(dealDetailQueryKey(updatedDeal.id), updatedDeal);
-      await queryClient.invalidateQueries({ queryKey: ['my-deals'] });
-      router.push('/(tabs)/my-deals');
-    },
-  });
-  const deal = dealQuery.data;
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
-  if (!dealId) {
-    return <DealApiState message="This deal link is missing its ID." />;
-  }
+  const deal = dealQuery.data;
 
   if (!deal) {
     return (
-      <DealApiState
-        isLoading={dealQuery.isLoading}
-        message={dealQuery.error?.message ?? 'Could not load this deal. Sign in and try again.'}
-        onRetry={() => void dealQuery.refetch()}
-      />
+      <SafeAreaView edges={['top', 'bottom']} style={styles.safeArea}>
+        <View style={styles.centered}>
+          {dealQuery.isError ? (
+            <>
+              <Text style={styles.stateTitle}>Could not load this deal</Text>
+              <Text style={styles.stateMessage}>
+                {getErrorMessage(
+                  dealQuery.error,
+                  'Something went wrong. Please try again.',
+                )}
+              </Text>
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => void dealQuery.refetch()}
+                style={[styles.primaryButton, styles.retryButton]}
+              >
+                <Text style={styles.primaryButtonText}>Try again</Text>
+              </Pressable>
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => router.back()}
+                style={styles.leaveButton}
+              >
+                <Text style={styles.leaveButtonText}>Go back</Text>
+              </Pressable>
+            </>
+          ) : (
+            <ActivityIndicator color="#db2777" />
+          )}
+        </View>
+      </SafeAreaView>
     );
   }
 
-  const participants = deal.participants;
-  const canJoin = deal.me
-    ? deal.me.actions.canJoin
-    : deal.actionsIfNotJoined.canJoin;
-  const canPay = deal.me?.actions.canPay ?? false;
-  const canLeave = deal.me?.actions.canLeave ?? false;
-  const amountToPay = deal.me?.amountToPay ?? 0;
-  const category = categoryLabel(deal.category);
-  const mutationError = joinMutation.error ?? leaveMutation.error;
+  // Hosts, paid participants and closed deals have their own screens.
+  const screen = dealScreenFor(deal);
+  if (screen !== '/deal/joiner') {
+    return <Redirect href={{ pathname: screen, params: { id: deal.id } }} />;
+  }
 
-  const screen = (
+  const me = deal.me;
+  const isReserved = me?.status === 'RESERVED';
+  const isPaying = me?.status === 'PAYMENT_PENDING';
+  const hasSlot = isReserved || isPaying;
+  const canJoin = me ? me.actions.canJoin : (deal.actionsIfNotJoined?.canJoin ?? false);
+  const canPay = me?.actions.canPay ?? false;
+  const canLeave = me?.actions.canLeave ?? false;
+  const amountToPay = hasSlot && me ? me.amountToPay : deal.pricePerSlot;
+  const paySeconds = secondsUntil(me?.reservedUntil, now);
+  const reservationExpired = hasSlot && Boolean(me?.reservedUntil) && paySeconds === 0;
+  const countdown = formatTime(paySeconds);
+
+  const category = deal.category === 'FOOD' ? 'Food' : 'Drink';
+  const dealSeconds = secondsUntil(deal.expiresAt, now);
+  const dealDuration = Math.max(
+    1,
+    (new Date(deal.expiresAt).getTime() - new Date(deal.createdAt).getTime()) /
+      1000,
+  );
+  const dealExpiryProgress = Math.max(
+    0,
+    Math.min(100, (dealSeconds / dealDuration) * 100),
+  );
+  const openSlots = Math.max(0, deal.targetSlots - deal.participants.length);
+  const myUserId = profile.data?.id;
+
+  const isBusy = joinDeal.isPending || payDeal.isPending || leaveDeal.isPending;
+  const actionError = joinDeal.error ?? payDeal.error ?? leaveDeal.error;
+
+  const resetErrors = () => {
+    joinDeal.reset();
+    payDeal.reset();
+    leaveDeal.reset();
+  };
+
+  const refresh = async () => {
+    setIsRefreshing(true);
+    try {
+      await dealQuery.refetch();
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
+  const join = () => {
+    resetErrors();
+    joinDeal.mutate(deal.id, { onSuccess: () => setShowCheckout(true) });
+  };
+
+  const payNow = () => {
+    const paymentId = me?.paymentId;
+    if (!paymentId) return;
+    resetErrors();
+    payDeal.mutate(
+      { paymentId, dealId: deal.id },
+      { onSettled: () => setShowCheckout(false) },
+    );
+  };
+
+  const confirmLeave = () => {
+    Alert.alert(
+      'Leave this deal?',
+      'Your slot will be released for someone else.',
+      [
+        { style: 'cancel', text: 'Stay' },
+        {
+          onPress: () => {
+            resetErrors();
+            leaveDeal.mutate(deal.id);
+          },
+          style: 'destructive',
+          text: 'Leave Deal',
+        },
+      ],
+    );
+  };
+
+  return (
     <SafeAreaView edges={['top', 'bottom']} style={styles.safeArea}>
       <ScrollView
         contentContainerStyle={styles.scrollContent}
+        refreshControl={
+          <RefreshControl
+            onRefresh={() => void refresh()}
+            refreshing={isRefreshing}
+            tintColor="#db2777"
+          />
+        }
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.hero}>
@@ -101,7 +211,7 @@ export default function JoinerDealScreen() {
             </Pressable>
             <View style={styles.joinStatus}>
               <Text style={styles.joinStatusText}>
-                {deal.me?.status ?? deal.status}
+                {isPaying ? 'PAYING' : isReserved ? 'RESERVED' : 'JOINING'}
               </Text>
             </View>
           </View>
@@ -117,9 +227,7 @@ export default function JoinerDealScreen() {
               </Text>
             </View>
             <View style={styles.priceInfo}>
-              <Text style={styles.totalPrice}>
-                ฿{deal.totalPrice.toLocaleString()}
-              </Text>
+              <Text style={styles.totalPrice}>{formatBaht(deal.totalPrice)}</Text>
               <Text style={styles.totalPriceLabel}>TOTAL PRICE</Text>
             </View>
           </View>
@@ -130,28 +238,29 @@ export default function JoinerDealScreen() {
                 <Icon color="#fcd34d" name="clock" size={21} />
               </View>
               <View style={styles.timerInfo}>
-                <Text style={styles.timerLabel}>DEAL EXPIRES</Text>
-                <Text style={styles.timerValue}>
-                  {new Date(deal.expiresAt).toLocaleString()}
-                </Text>
+                <Text style={styles.timerLabel}>DEAL EXPIRES IN</Text>
+                <Text style={styles.timerValue}>{formatTime(dealSeconds)}</Text>
               </View>
-              <Text style={styles.activeBadge}>{deal.status}</Text>
+              <Text style={styles.activeBadge}>
+                {deal.status === 'LOCKED' ? 'Reserved' : 'Active'}
+              </Text>
+            </View>
+            <View style={styles.progressTrack}>
+              <View
+                style={[styles.progressValue, { width: `${dealExpiryProgress}%` }]}
+              />
             </View>
           </View>
 
-          {deal.me ? (
-            <View style={styles.amountCard}>
-              <View>
-                <Text style={styles.amountLabel}>AMOUNT TO PAY</Text>
-                <Text style={styles.amountValue}>
-                  ฿{amountToPay.toLocaleString()}
-                </Text>
-              </View>
-              <View style={styles.walletIcon}>
-                <Icon color="#fff" name="wallet" size={22} />
-              </View>
+          <View style={styles.amountCard}>
+            <View>
+              <Text style={styles.amountLabel}>AMOUNT TO PAY</Text>
+              <Text style={styles.amountValue}>{formatBaht(amountToPay)}</Text>
             </View>
-          ) : null}
+            <View style={styles.walletIcon}>
+              <Icon color="#fff" name="wallet" size={22} />
+            </View>
+          </View>
 
           <View style={styles.participantsSection}>
             <View style={styles.sectionHeading}>
@@ -161,76 +270,116 @@ export default function JoinerDealScreen() {
               </Text>
             </View>
             <View style={styles.participantCard}>
-              {participants.map((person, index) => (
+              {deal.participants.map((participant, index) => {
+                const isCurrent =
+                  hasSlot && Boolean(myUserId) && participant.userId === myUserId;
+                return (
+                  <ParticipantRow
+                    badge={
+                      isCurrent
+                        ? isPaying
+                          ? 'Processing'
+                          : `Pay in ${countdown}`
+                        : undefined
+                    }
+                    detail={isCurrent ? '' : participantDetail(participant)}
+                    initials={initialsOf(participant.name)}
+                    isCurrent={isCurrent}
+                    isHost={participant.role === 'HOST'}
+                    key={participant.slotNo}
+                    last={openSlots === 0 && index === deal.participants.length - 1}
+                    name={isCurrent ? 'You' : participant.name}
+                  />
+                );
+              })}
+              {Array.from({ length: openSlots }, (_, index) => (
                 <ParticipantRow
-                  detail={`${person.role === 'HOST' ? 'Host' : `Slot ${person.slotNo}`} · ${participantStatusLabel(person.status)}`}
-                  initials={initialsFor(person.name)}
+                  detail="Available"
+                  initials=""
                   isCurrent={false}
-                  isHost={person.role === 'HOST'}
-                  key={`${person.userId}-${person.slotNo}`}
-                  last={index === participants.length - 1}
-                  name={person.name}
-                  countdown=""
+                  isHost={false}
+                  key={`open-${index}`}
+                  last={index === openSlots - 1}
+                  name="Empty slot"
                 />
               ))}
-              {participants.length === 0 ? (
-                <Text style={styles.emptyParticipants}>No participants yet.</Text>
-              ) : null}
             </View>
           </View>
 
-          {canPay || paymentClientSecret ? (
-            deal.me?.paymentId ? (
-              <StripePaymentSheetPayButton
-                buttonStyle={styles.primaryButton}
-                clientSecret={paymentClientSecret}
-                dealId={deal.id}
-                onClientSecretChange={setPaymentClientSecret}
-                paymentId={deal.me.paymentId}
-                pressedStyle={styles.buttonPressed}
-                disabledStyle={styles.buttonDisabled}
-              >
-                <Icon color="#fff" name="card" size={18} />
-                <Text style={styles.primaryButtonText}>Pay Now</Text>
-              </StripePaymentSheetPayButton>
-            ) : (
-              <Text accessibilityRole="alert" style={styles.actionError}>
-                The reservation has no payment ID.
-              </Text>
-            )
-          ) : canJoin ? (
+          {actionError ? (
+            <Text accessibilityRole="alert" style={styles.actionError}>
+              {getErrorMessage(actionError, 'Something went wrong. Please try again.')}
+            </Text>
+          ) : null}
+
+          {hasSlot ? (
+            <>
+              {isPaying ? (
+                <View style={styles.processingNote}>
+                  <ActivityIndicator color="#b45309" size="small" />
+                  <Text style={styles.processingText}>
+                    Payment processing. This page updates once it is confirmed.
+                  </Text>
+                </View>
+              ) : (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityState={{ busy: payDeal.isPending, disabled: !canPay || reservationExpired || isBusy }}
+                  disabled={!canPay || reservationExpired || isBusy}
+                  onPress={payNow}
+                  style={({ pressed }) => [
+                    styles.primaryButton,
+                    (!canPay || reservationExpired || isBusy) && styles.primaryButtonDisabled,
+                    pressed && styles.buttonPressed,
+                  ]}
+                >
+                  <Icon color="#fff" name="card" size={18} />
+                  <Text style={styles.primaryButtonText}>
+                    {payDeal.isPending
+                      ? 'Paying…'
+                      : reservationExpired
+                        ? 'Reservation expired'
+                        : 'Pay Now'}
+                  </Text>
+                </Pressable>
+              )}
+              {canLeave ? (
+                <Pressable
+                  accessibilityRole="button"
+                  disabled={isBusy}
+                  onPress={confirmLeave}
+                  style={styles.leaveButton}
+                >
+                  <Text style={styles.leaveButtonText}>
+                    {leaveDeal.isPending ? 'Leaving…' : 'Leave Deal'}
+                  </Text>
+                </Pressable>
+              ) : null}
+            </>
+          ) : (
             <Pressable
               accessibilityRole="button"
-              disabled={joinMutation.isPending}
-              onPress={() => void joinMutation.mutateAsync()}
+              accessibilityState={{ busy: joinDeal.isPending, disabled: !canJoin || isBusy }}
+              disabled={!canJoin || isBusy}
+              onPress={join}
               style={({ pressed }) => [
                 styles.primaryButton,
+                (!canJoin || isBusy) && styles.primaryButtonDisabled,
                 pressed && styles.buttonPressed,
               ]}
             >
               <Icon color="#fff" name="people" size={18} />
               <Text style={styles.primaryButtonText}>
-                {joinMutation.isPending ? 'Joining…' : 'Join Deal'}
+                {joinDeal.isPending
+                  ? 'Joining…'
+                  : canJoin
+                    ? 'Join Deal'
+                    : openSlots === 0
+                      ? 'Deal is full'
+                      : 'Not available'}
               </Text>
             </Pressable>
-          ) : null}
-          {canLeave ? (
-            <Pressable
-              accessibilityRole="button"
-              disabled={leaveMutation.isPending}
-              onPress={() => void leaveMutation.mutateAsync()}
-              style={styles.leaveButton}
-            >
-              <Text style={styles.leaveButtonText}>
-                {leaveMutation.isPending ? 'Leaving…' : 'Leave Deal'}
-              </Text>
-            </Pressable>
-          ) : null}
-          {mutationError ? (
-            <Text accessibilityRole="alert" style={styles.actionError}>
-              {mutationError.message}
-            </Text>
-          ) : null}
+          )}
         </View>
       </ScrollView>
 
@@ -238,7 +387,7 @@ export default function JoinerDealScreen() {
         animationType="slide"
         onRequestClose={() => setShowCheckout(false)}
         transparent
-        visible={showCheckout}
+        visible={showCheckout && isReserved}
       >
         <View style={styles.modalRoot}>
           <Pressable
@@ -253,30 +402,27 @@ export default function JoinerDealScreen() {
               <Icon color="#db2777" name="wallet" size={25} />
             </View>
             <Text style={styles.checkoutAmountLabel}>AMOUNT TO PAY</Text>
-            <Text style={styles.checkoutAmount}>
-              ฿{amountToPay.toLocaleString()}
-            </Text>
+            <Text style={styles.checkoutAmount}>{formatBaht(amountToPay)}</Text>
             <Text style={styles.checkoutDescription}>
-              Your exact share of the ฿{deal.totalPrice.toLocaleString()} total
+              Your exact share of the {formatBaht(deal.totalPrice)} total
             </Text>
-            {deal.me?.paymentId ? (
-              <StripePaymentSheetPayButton
-                buttonStyle={[styles.primaryButton, styles.checkoutPayButton]}
-                clientSecret={paymentClientSecret}
-                dealId={deal.id}
-                onClientSecretChange={setPaymentClientSecret}
-                paymentId={deal.me.paymentId}
-                pressedStyle={styles.buttonPressed}
-                disabledStyle={styles.buttonDisabled}
-              >
-                <Icon color="#fff" name="card" size={18} />
-                <Text style={styles.primaryButtonText}>Pay Now</Text>
-              </StripePaymentSheetPayButton>
-            ) : (
-              <Text accessibilityRole="alert" style={styles.actionError}>
-                The reservation has no payment ID.
+            <Pressable
+              accessibilityRole="button"
+              disabled={!canPay || reservationExpired || isBusy}
+              onPress={payNow}
+              style={({ pressed }) => [
+                styles.primaryButton,
+                styles.checkoutPayButton,
+                (!canPay || reservationExpired || isBusy) && styles.primaryButtonDisabled,
+                pressed && styles.buttonPressed,
+              ]}
+            >
+              <Icon color="#fff" name="card" size={18} />
+              <Text style={styles.primaryButtonText}>
+                {payDeal.isPending ? 'Paying…' : 'Pay Now'}
               </Text>
-            )}
+              <Text style={styles.checkoutCountdown}>{countdown}</Text>
+            </Pressable>
             <Pressable
               accessibilityRole="button"
               onPress={() => setShowCheckout(false)}
@@ -289,46 +435,19 @@ export default function JoinerDealScreen() {
       </Modal>
     </SafeAreaView>
   );
-
-  return <StripePaymentSheetProvider>{screen}</StripePaymentSheetProvider>;
 }
 
 function firstParam(value?: string | string[]) {
   return Array.isArray(value) ? value[0] : value;
 }
 
-function categoryLabel(category: string) {
-  return category === 'FOOD' ? 'Food' : 'Drink';
-}
-
-function initialsFor(name: string) {
-  return name
-    .split(/\s+/)
-    .slice(0, 2)
-    .map((part) => part[0] ?? '')
-    .join('')
-    .toUpperCase();
-}
-
-function participantStatusLabel(status: DealParticipantStatus) {
-  switch (status) {
-    case 'HOST':
-      return 'Host';
-    case 'RESERVED':
-      return 'Reserved';
-    case 'PAYMENT_PENDING':
-      return 'Payment pending';
-    case 'HELD':
-      return 'Paid';
-    case 'RECEIVED':
-      return 'Received';
-    case 'FAILED':
-      return 'Left';
-    case 'REFUND_PENDING':
-      return 'Refund pending';
-    case 'REFUNDED':
-      return 'Refunded';
-  }
+function formatTime(seconds: number) {
+  const hours = Math.floor(seconds / 3600);
+  const minutes = String(Math.floor((seconds % 3600) / 60)).padStart(2, '0');
+  const remainingSeconds = String(seconds % 60).padStart(2, '0');
+  return hours > 0
+    ? `${hours}:${minutes}:${remainingSeconds}`
+    : `${minutes}:${remainingSeconds}`;
 }
 
 function ParticipantRow({
@@ -338,7 +457,7 @@ function ParticipantRow({
   isHost,
   last,
   name,
-  countdown,
+  badge,
 }: {
   detail: string;
   initials: string;
@@ -346,7 +465,7 @@ function ParticipantRow({
   isHost: boolean;
   last: boolean;
   name: string;
-  countdown: string;
+  badge?: string;
 }) {
   const isEmpty = !initials;
   return (
@@ -381,10 +500,10 @@ function ParticipantRow({
           <Text style={styles.hostBadgeText}>Host</Text>
         </View>
       ) : null}
-      {isCurrent ? (
+      {badge ? (
         <View style={styles.paymentBadge}>
           <Icon color="#b45309" name="clock" size={11} />
-          <Text style={styles.paymentBadgeText}>Pay in {countdown}</Text>
+          <Text style={styles.paymentBadgeText}>{badge}</Text>
         </View>
       ) : null}
     </View>
@@ -792,18 +911,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.05,
     shadowRadius: 4,
   },
-  emptyParticipants: {
-    color: '#64748b',
-    fontSize: 13,
-    padding: 18,
-    textAlign: 'center',
-  },
-  actionError: {
-    color: '#b91c1c',
-    fontSize: 12,
-    marginTop: 10,
-    textAlign: 'center',
-  },
   participantRow: {
     alignItems: 'center',
     flexDirection: 'row',
@@ -907,12 +1014,54 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '800',
   },
+  primaryButtonDisabled: {
+    opacity: 0.5,
+  },
+  centered: {
+    alignItems: 'center',
+    flex: 1,
+    justifyContent: 'center',
+    padding: 24,
+  },
+  stateTitle: {
+    color: '#0f172a',
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  stateMessage: {
+    color: '#64748b',
+    fontSize: 12,
+    marginTop: 6,
+    textAlign: 'center',
+  },
+  retryButton: {
+    alignSelf: 'stretch',
+    marginTop: 18,
+  },
+  actionError: {
+    color: '#be185d',
+    fontSize: 12,
+    fontWeight: '600',
+    marginBottom: 10,
+    textAlign: 'center',
+  },
+  processingNote: {
+    alignItems: 'center',
+    backgroundColor: '#fffbeb',
+    borderRadius: 16,
+    flexDirection: 'row',
+    gap: 10,
+    padding: 14,
+  },
+  processingText: {
+    color: '#b45309',
+    flex: 1,
+    fontSize: 12,
+    fontWeight: '700',
+  },
   buttonPressed: {
     opacity: 0.9,
     transform: [{ scale: 0.98 }],
-  },
-  buttonDisabled: {
-    opacity: 0.65,
   },
   leaveButton: {
     alignItems: 'center',
@@ -983,12 +1132,6 @@ const styles = StyleSheet.create({
   checkoutPayButton: {
     marginTop: 24,
     width: '100%',
-  },
-  paymentNotice: {
-    color: '#64748b',
-    fontSize: 12,
-    marginTop: 8,
-    textAlign: 'center',
   },
   checkoutCountdown: {
     backgroundColor: 'rgba(255, 255, 255, 0.15)',

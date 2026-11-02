@@ -1,6 +1,8 @@
+import { useState } from 'react';
 import { useRouter, type Href } from 'expo-router';
 import {
   ActivityIndicator,
+  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -20,7 +22,9 @@ import type { NotificationCategory } from '@/schemas/notification.schema';
 
 export default function ProfileTab() {
   const router = useRouter();
-  const { accessToken, isRestoring } = useAuth();
+  const { accessToken, isRestoring, logout } = useAuth();
+  const [showLogoutModal, setShowLogoutModal] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
   const profileQuery = useProfile();
   const preferencesQuery = useNotificationPreferences();
   const updatePreferences = useUpdateNotificationPreferences();
@@ -54,6 +58,25 @@ export default function ProfileTab() {
         ? notificationCategories.filter((item) => item !== category)
         : [...notificationCategories, category],
     );
+  };
+
+  const closeLogoutModal = () => {
+    if (isLoggingOut) return;
+    setShowLogoutModal(false);
+  };
+
+  // Clears the token and cached data, then drops every screen in the stack
+  // so back can't return to signed-in screens.
+  const confirmLogout = async () => {
+    setIsLoggingOut(true);
+    try {
+      await logout();
+    } finally {
+      setIsLoggingOut(false);
+      setShowLogoutModal(false);
+      if (router.canDismiss()) router.dismissAll();
+      router.replace('/(auth)/login');
+    }
   };
 
   return (
@@ -172,9 +195,58 @@ export default function ProfileTab() {
             </View>
           </View>
 
+          {accessToken ? (
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => setShowLogoutModal(true)}
+              style={styles.logoutButton}
+            >
+              <Text style={styles.logoutText}>Log Out</Text>
+            </Pressable>
+          ) : null}
+
           <Text style={styles.version}>÷ KAN VERSION 1.0</Text>
         </View>
       </ScrollView>
+
+      <Modal
+        animationType="fade"
+        onRequestClose={closeLogoutModal}
+        transparent
+        visible={showLogoutModal}
+      >
+        <View style={styles.modalOverlay}>
+          <View accessibilityViewIsModal style={styles.modalCard}>
+            <View style={styles.logoutConfirmationIcon}>
+              <Text style={styles.logoutConfirmationMark}>!</Text>
+            </View>
+            <Text style={styles.modalTitle}>Log out?</Text>
+            <Text style={styles.modalMessage}>
+              You&apos;ll need to log in again to see your deals.
+            </Text>
+            <View style={styles.modalActions}>
+              <Pressable
+                accessibilityRole="button"
+                disabled={isLoggingOut}
+                onPress={closeLogoutModal}
+                style={styles.cancelButton}
+              >
+                <Text style={styles.cancelButtonText}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                accessibilityRole="button"
+                disabled={isLoggingOut}
+                onPress={() => void confirmLogout()}
+                style={styles.confirmLogoutButton}
+              >
+                <Text style={styles.confirmLogoutText}>
+                  {isLoggingOut ? 'Logging out…' : 'Log Out'}
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }

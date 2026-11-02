@@ -1,8 +1,10 @@
 import { useState } from 'react';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
 import {
+  ActivityIndicator,
   Modal,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -10,73 +12,149 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
 
-import { DealApiState } from '@/components/deal-api-state';
-import {
-  dealDetailQueryKey,
-  useDealDetails,
-  usePaymentDetails,
-} from '@/hooks/useDealDetails';
-import { confirmDealReceipt } from '@/services/deal.service';
-import type { DealParticipantStatus } from '@/types/deal.types';
+import { getErrorMessage } from '@/api/errors';
+import { useConfirmReceipt, useDeal } from '@/hooks/useDeals';
+import { useProfile } from '@/hooks/useProfile';
+import { dealScreenFor } from '@/lib/deal-routing';
+import type { DealParticipant } from '@/schemas/deal.schema';
+import { formatBaht } from '@/utils/format';
+
+type RowStatus = 'Host' | 'Paid' | 'Received' | 'Waiting' | 'Open';
+
+function initialsOf(name: string) {
+  const letters = name
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((part) => part[0])
+    .join('');
+  return letters.slice(0, 2).toUpperCase() || '?';
+}
+
+function participantRow(participant: DealParticipant): {
+  detail: string;
+  status: RowStatus;
+} {
+  switch (participant.status) {
+    case 'HOST':
+      return { detail: 'Deal creator', status: 'Host' };
+    case 'HELD':
+      return { detail: 'Payment complete', status: 'Paid' };
+    case 'RECEIVED':
+      return { detail: 'Item received', status: 'Received' };
+    default:
+      return { detail: 'Waiting for payment', status: 'Waiting' };
+  }
+}
 
 export default function PostPaymentDealScreen() {
   const router = useRouter();
-  const queryClient = useQueryClient();
-  const params = useLocalSearchParams<{
-    id?: string | string[];
-    paymentId?: string | string[];
-  }>();
-  const dealId = firstParam(params.id);
-  const routePaymentId = firstParam(params.paymentId);
-  const dealQuery = useDealDetails(dealId);
-  const paymentId = routePaymentId ?? dealQuery.data?.me?.paymentId ?? undefined;
-  const paymentQuery = usePaymentDetails(paymentId);
+  const { id } = useLocalSearchParams<{ id: string }>();
+  const dealId = firstParam(id);
+  const dealQuery = useDeal(dealId);
+  const profile = useProfile();
+  const confirmReceipt = useConfirmReceipt();
   const [showConfirmModal, setShowConfirmModal] = useState(false);
-  const confirmMutation = useMutation({
-    mutationFn: () => {
-      if (!dealId) throw new Error('A deal ID is required.');
-      return confirmDealReceipt(dealId);
-    },
-    onSuccess: async (updatedDeal) => {
-      queryClient.setQueryData(dealDetailQueryKey(updatedDeal.id), updatedDeal);
-      await queryClient.invalidateQueries({ queryKey: ['my-deals'] });
-      setShowConfirmModal(false);
-      if (updatedDeal.status === 'COMPLETED') {
-        router.push({
-          pathname: '/deal/completed',
-          params: { id: updatedDeal.id },
-        });
-      }
-    },
-  });
-  const deal = dealQuery.data;
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
-  if (!dealId) {
-    return <DealApiState message="This deal link is missing its ID." />;
-  }
+  const deal = dealQuery.data;
 
   if (!deal) {
     return (
-      <DealApiState
-        isLoading={dealQuery.isLoading}
-        message={dealQuery.error?.message ?? 'Could not load this deal. Sign in and try again.'}
-        onRetry={() => void dealQuery.refetch()}
-      />
+      <SafeAreaView edges={['top', 'bottom']} style={styles.safeArea}>
+        <View style={styles.centered}>
+          {dealQuery.isError ? (
+            <>
+              <Text style={styles.stateTitle}>Could not load this deal</Text>
+              <Text style={styles.stateMessage}>
+                {getErrorMessage(
+                  dealQuery.error,
+                  'Something went wrong. Please try again.',
+                )}
+              </Text>
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => void dealQuery.refetch()}
+                style={[styles.modalConfirmButton, styles.retryButton]}
+              >
+                <Text style={styles.modalConfirmText}>Try again</Text>
+              </Pressable>
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => router.back()}
+                style={[styles.modalCancelButton, styles.retryButton]}
+              >
+                <Text style={styles.modalCancelText}>Go back</Text>
+              </Pressable>
+            </>
+          ) : (
+            <ActivityIndicator color="#db2777" />
+          )}
+        </View>
+      </SafeAreaView>
     );
   }
 
-  const paymentStatus = paymentQuery.data?.status ?? deal.me?.status ?? 'UNKNOWN';
-  const paymentAmount = paymentQuery.data?.amount ?? String(deal.me?.amountToPay ?? 0);
-  const paymentConfirmed = paymentStatus === 'HELD' || paymentStatus === 'RECEIVED';
-  const canConfirmReceipt = deal.me?.actions.canConfirmReceipt ?? false;
-  const participants = deal.participants;
+  // Completed deals (e.g. after the last confirm) and other states move on.
+  const screen = dealScreenFor(deal);
+  if (screen !== '/deal/post-payment') {
+    return <Redirect href={{ pathname: screen, params: { id: deal.id } }} />;
+  }
+
+  const me = deal.me;
+  const isReceived = me?.status === 'RECEIVED';
+  const canConfirmReceipt = me?.actions.canConfirmReceipt ?? false;
+  const paidAmount = me?.amountToPay || deal.pricePerSlot;
+  const category = deal.category === 'FOOD' ? 'Food' : 'Drink';
+  const openSlots = Math.max(0, deal.targetSlots - deal.participants.length);
+  const myUserId = profile.data?.id;
+
+  const bannerTitle = isReceived
+    ? 'You confirmed your item'
+    : `Your ${formatBaht(paidAmount)} payment is complete`;
+  const bannerDescription = isReceived
+    ? 'The deal completes once everyone confirms they received their item.'
+    : canConfirmReceipt
+      ? 'Everyone has paid. Pick up your item, then confirm below.'
+      : 'Your spot is secured. Waiting for the others to pay.';
+
+  const refresh = async () => {
+    setIsRefreshing(true);
+    try {
+      await dealQuery.refetch();
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
+  const openConfirmModal = () => {
+    confirmReceipt.reset();
+    setShowConfirmModal(true);
+  };
+
+  const closeConfirmModal = () => {
+    if (confirmReceipt.isPending) return;
+    setShowConfirmModal(false);
+  };
+
+  // A COMPLETED response redirects to the completed screen on re-render.
+  const confirmReceived = () => {
+    confirmReceipt.mutate(deal.id, {
+      onSuccess: () => setShowConfirmModal(false),
+    });
+  };
 
   return (
     <SafeAreaView edges={['top', 'bottom']} style={styles.safeArea}>
       <ScrollView
         contentContainerStyle={styles.scrollContent}
+        refreshControl={
+          <RefreshControl
+            onRefresh={() => void refresh()}
+            refreshing={isRefreshing}
+            tintColor="#db2777"
+          />
+        }
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.hero}>
@@ -90,14 +168,10 @@ export default function PostPaymentDealScreen() {
             >
               <Icon color="#0f172a" name="back" size={20} />
             </Pressable>
-            <View style={[styles.paidBadge, !paymentConfirmed && styles.pendingBadge]}>
-              <Text
-                style={[
-                  styles.paidBadgeText,
-                  !paymentConfirmed && styles.pendingBadgeText,
-                ]}
-              >
-                {paymentStatusLabel(paymentStatus)}
+            <View style={styles.paidBadge}>
+              <Icon color="#047857" name="check" size={12} />
+              <Text style={styles.paidBadgeText}>
+                {isReceived ? 'RECEIVED' : 'PAID'}
               </Text>
             </View>
           </View>
@@ -106,42 +180,25 @@ export default function PostPaymentDealScreen() {
         <View style={styles.content}>
           <View style={styles.dealHeader}>
             <View style={styles.dealInfo}>
-              <Text style={styles.categoryBadge}>{categoryLabel(deal.category)}</Text>
+              <Text style={styles.categoryBadge}>{category}</Text>
               <Text style={styles.dealTitle}>{deal.dealName}</Text>
               <Text style={styles.dealSubtitle}>
                 {deal.details || deal.pickupLocation}
               </Text>
             </View>
             <View style={styles.priceInfo}>
-              <Text style={styles.totalPrice}>฿{deal.totalPrice.toLocaleString()}</Text>
+              <Text style={styles.totalPrice}>{formatBaht(deal.totalPrice)}</Text>
               <Text style={styles.totalPriceLabel}>TOTAL PRICE</Text>
             </View>
           </View>
 
           <View style={styles.paymentBanner}>
-            <View
-              style={[
-                styles.paymentCheck,
-                !paymentConfirmed && styles.pendingPaymentCheck,
-              ]}
-            >
-              <Icon
-                color="#fff"
-                name={paymentStatus === 'HELD' || paymentStatus === 'RECEIVED' ? 'check' : 'clock'}
-                size={19}
-              />
+            <View style={styles.paymentCheck}>
+              <Icon color="#fff" name="check" size={19} />
             </View>
             <View style={styles.paymentCopy}>
-              <Text style={styles.paymentTitle}>
-                ฿{Number(paymentAmount).toLocaleString()} · {paymentStatusLabel(paymentStatus)}
-              </Text>
-              <Text style={styles.paymentDescription}>
-                {paymentStatus === 'HELD' || paymentStatus === 'RECEIVED'
-                  ? 'Your payment is secured. Wait for the host to place the order.'
-                  : paymentStatus === 'PAYMENT_PENDING'
-                    ? 'Payment has been started. This screen refreshes while the payment provider confirms it.'
-                    : `Payment status: ${paymentStatusLabel(paymentStatus)}.`}
-              </Text>
+              <Text style={styles.paymentTitle}>{bannerTitle}</Text>
+              <Text style={styles.paymentDescription}>{bannerDescription}</Text>
             </View>
           </View>
 
@@ -153,26 +210,40 @@ export default function PostPaymentDealScreen() {
               </Text>
             </View>
             <View style={styles.participantCard}>
-              {participants.map((person, index) => (
+              {deal.participants.map((participant, index) => {
+                const isCurrent =
+                  Boolean(myUserId) && participant.userId === myUserId;
+                const row = participantRow(participant);
+                return (
+                  <ParticipantRow
+                    detail={row.detail}
+                    initials={initialsOf(participant.name)}
+                    isCurrent={isCurrent}
+                    key={participant.slotNo}
+                    last={openSlots === 0 && index === deal.participants.length - 1}
+                    name={isCurrent ? 'You' : participant.name}
+                    status={row.status}
+                  />
+                );
+              })}
+              {Array.from({ length: openSlots }, (_, index) => (
                 <ParticipantRow
-                  detail={`${person.role === 'HOST' ? 'Host' : `Slot ${person.slotNo}`} · ฿${deal.pricePerSlot.toLocaleString()} share`}
-                  initials={initialsFor(person.name)}
-                  key={`${person.userId}-${person.slotNo}`}
-                  last={index === participants.length - 1}
-                  name={person.name}
-                  status={participantStatusLabel(person.status)}
+                  detail="Available"
+                  initials="+"
+                  isCurrent={false}
+                  key={`open-${index}`}
+                  last={index === openSlots - 1}
+                  name="Empty slot"
+                  status="Open"
                 />
               ))}
-              {participants.length === 0 ? (
-                <Text style={styles.errorText}>No participants yet.</Text>
-              ) : null}
             </View>
           </View>
 
           {canConfirmReceipt ? (
             <Pressable
               accessibilityRole="button"
-              onPress={() => setShowConfirmModal(true)}
+              onPress={openConfirmModal}
               style={({ pressed }) => [
                 styles.confirmReceivedButton,
                 pressed && styles.buttonPressed,
@@ -181,26 +252,24 @@ export default function PostPaymentDealScreen() {
               <Icon color="#fff" name="check" size={18} />
               <Text style={styles.confirmReceivedText}>Confirm Item Received</Text>
             </Pressable>
-          ) : (
-            <Text style={styles.paymentDescription}>
-              {deal.me?.status === 'RECEIVED'
-                ? 'You already confirmed receipt.'
-                : 'Receipt confirmation becomes available when the API marks your payment as held and the deal is ready.'}
-            </Text>
-          )}
-          {dealQuery.error || paymentQuery.error || confirmMutation.error ? (
-            <Text accessibilityRole="alert" style={styles.errorText}>
-              {confirmMutation.error?.message ??
-                paymentQuery.error?.message ??
-                dealQuery.error?.message}
+          ) : !isReceived ? (
+            <Text style={styles.confirmHint}>
+              You can confirm receipt once every slot is paid.
             </Text>
           ) : null}
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => {}}
+            style={styles.reportIssueButton}
+          >
+            <Text style={styles.reportIssueText}>Report Issue</Text>
+          </Pressable>
         </View>
       </ScrollView>
 
       <Modal
         animationType="fade"
-        onRequestClose={() => setShowConfirmModal(false)}
+        onRequestClose={closeConfirmModal}
         transparent
         visible={showConfirmModal}
       >
@@ -208,7 +277,7 @@ export default function PostPaymentDealScreen() {
           <Pressable
             accessibilityLabel="Close confirmation"
             accessibilityRole="button"
-            onPress={() => setShowConfirmModal(false)}
+            onPress={closeConfirmModal}
             style={styles.modalBackdrop}
           />
           <View accessibilityViewIsModal style={styles.modalCard}>
@@ -220,54 +289,65 @@ export default function PostPaymentDealScreen() {
               Are you sure you have received your exact order from the host?
               This action cannot be undone.
             </Text>
+            {confirmReceipt.error ? (
+              <Text accessibilityRole="alert" style={styles.actionError}>
+                {getErrorMessage(
+                  confirmReceipt.error,
+                  'Could not confirm. Please try again.',
+                )}
+              </Text>
+            ) : null}
             <Pressable
               accessibilityRole="button"
-              disabled={confirmMutation.isPending}
-              onPress={() => void confirmMutation.mutateAsync()}
+              disabled={confirmReceipt.isPending}
+              onPress={confirmReceived}
               style={({ pressed }) => [
                 styles.modalConfirmButton,
                 pressed && styles.buttonPressed,
+                confirmReceipt.isPending && styles.buttonDisabled,
               ]}
             >
               <Text style={styles.modalConfirmText}>
-                {confirmMutation.isPending ? 'Confirming…' : 'Yes, Confirm'}
+                {confirmReceipt.isPending ? 'Confirming…' : 'Yes, Confirm'}
               </Text>
             </Pressable>
             <Pressable
               accessibilityRole="button"
-              onPress={() => setShowConfirmModal(false)}
+              disabled={confirmReceipt.isPending}
+              onPress={closeConfirmModal}
               style={styles.modalCancelButton}
             >
               <Text style={styles.modalCancelText}>Cancel</Text>
             </Pressable>
           </View>
-          {confirmMutation.error ? (
-            <Text accessibilityRole="alert" style={styles.errorText}>
-              {confirmMutation.error.message}
-            </Text>
-          ) : null}
         </View>
       </Modal>
     </SafeAreaView>
   );
 }
 
+function firstParam(value?: string | string[]) {
+  return Array.isArray(value) ? value[0] : value;
+}
+
 function ParticipantRow({
   detail,
   initials,
+  isCurrent,
   last,
   name,
   status,
 }: {
   detail: string;
   initials: string;
+  isCurrent: boolean;
   last: boolean;
   name: string;
-  status: string;
+  status: RowStatus;
 }) {
   return (
     <View style={[styles.participantRow, !last && styles.participantRowBorder]}>
-      <View style={[styles.avatar, name === 'You' && styles.currentAvatar]}>
+      <View style={[styles.avatar, isCurrent && styles.currentAvatar]}>
         <Text style={styles.avatarText}>{initials}</Text>
       </View>
       <View style={styles.participantInfo}>
@@ -279,76 +359,25 @@ function ParticipantRow({
   );
 }
 
-function StatusBadge({ status }: { status: string }) {
-  const isPaid = status === 'Paid' || status === 'Received' || status === 'Refunded';
-  const isWaiting = status === 'Reserved' || status === 'Payment pending';
-  const badgeStyle = isPaid
+function StatusBadge({ status }: { status: RowStatus }) {
+  const isDone = status === 'Paid' || status === 'Received';
+  const badgeStyle = isDone
     ? styles.paidStatus
-    : isWaiting
+    : status === 'Waiting'
       ? styles.waitingStatus
       : styles.hostStatus;
-  const textStyle = isPaid
+  const textStyle = isDone
     ? styles.paidStatusText
-    : isWaiting
+    : status === 'Waiting'
       ? styles.waitingStatusText
       : styles.hostStatusText;
 
   return (
     <View style={[styles.statusBadge, badgeStyle]}>
-      {isPaid ? (
-        <Icon color="#047857" name="check" size={11} />
-      ) : null}
+      {isDone ? <Icon color="#047857" name="check" size={11} /> : null}
       <Text style={[styles.statusText, textStyle]}>{status}</Text>
     </View>
   );
-}
-
-function firstParam(value?: string | string[]) {
-  return Array.isArray(value) ? value[0] : value;
-}
-
-function categoryLabel(category: string) {
-  return category === 'FOOD' ? 'Food' : 'Drink';
-}
-
-function initialsFor(name: string) {
-  return name
-    .split(/\s+/)
-    .slice(0, 2)
-    .map((part) => part[0] ?? '')
-    .join('')
-    .toUpperCase();
-}
-
-function participantStatusLabel(status: DealParticipantStatus) {
-  switch (status) {
-    case 'HOST':
-      return 'Host';
-    case 'RESERVED':
-      return 'Reserved';
-    case 'PAYMENT_PENDING':
-      return 'Payment pending';
-    case 'HELD':
-      return 'Paid';
-    case 'RECEIVED':
-      return 'Received';
-    case 'FAILED':
-      return 'Left';
-    case 'REFUND_PENDING':
-      return 'Refund pending';
-    case 'REFUNDED':
-      return 'Refunded';
-  }
-}
-
-function paymentStatusLabel(status: string) {
-  return status === 'UNKNOWN'
-    ? 'Not available'
-    : status
-        .toLowerCase()
-        .split('_')
-        .map((part) => `${part[0]?.toUpperCase() ?? ''}${part.slice(1)}`)
-        .join(' ');
 }
 
 function DealVisual() {
@@ -377,7 +406,7 @@ function Icon({
   size,
 }: {
   color: string;
-  name: 'back' | 'bag' | 'check' | 'clock';
+  name: 'back' | 'bag' | 'check';
   size: number;
 }) {
   return (
@@ -399,12 +428,6 @@ function Icon({
         </>
       ) : null}
       {name === 'check' ? <Path d="m5 12 4 4L19 6" /> : null}
-      {name === 'clock' ? (
-        <>
-          <Path d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Z" />
-          <Path d="M12 7v5l3 2" />
-        </>
-      ) : null}
     </Svg>
   );
 }
@@ -413,12 +436,6 @@ const styles = StyleSheet.create({
   safeArea: {
     backgroundColor: '#fff',
     flex: 1,
-  },
-  errorText: {
-    color: '#b91c1c',
-    fontSize: 12,
-    marginTop: 10,
-    textAlign: 'center',
   },
   scrollContent: {
     paddingBottom: 32,
@@ -533,12 +550,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 4,
   },
-  pendingBadge: {
-    backgroundColor: '#fffbeb',
-  },
-  pendingBadgeText: {
-    color: '#b45309',
-  },
   paidBadgeText: {
     color: '#047857',
     fontSize: 10,
@@ -641,9 +652,6 @@ const styles = StyleSheet.create({
     height: 40,
     justifyContent: 'center',
     width: 40,
-  },
-  pendingPaymentCheck: {
-    backgroundColor: '#d97706',
   },
   paymentCopy: {
     flex: 1,
@@ -780,6 +788,46 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 14,
     fontWeight: '800',
+  },
+  buttonDisabled: {
+    opacity: 0.6,
+  },
+  confirmHint: {
+    color: '#94a3b8',
+    fontSize: 11,
+    fontWeight: '600',
+    marginTop: 24,
+    textAlign: 'center',
+  },
+  actionError: {
+    color: '#dc2626',
+    fontSize: 12,
+    fontWeight: '600',
+    marginTop: 12,
+    textAlign: 'center',
+  },
+  centered: {
+    alignItems: 'center',
+    flex: 1,
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+  },
+  stateTitle: {
+    color: '#020617',
+    fontSize: 18,
+    fontWeight: '800',
+    textAlign: 'center',
+  },
+  stateMessage: {
+    color: '#64748b',
+    fontSize: 13,
+    fontWeight: '500',
+    marginTop: 8,
+    textAlign: 'center',
+  },
+  retryButton: {
+    alignSelf: 'stretch',
+    width: 'auto',
   },
   buttonPressed: {
     opacity: 0.9,
