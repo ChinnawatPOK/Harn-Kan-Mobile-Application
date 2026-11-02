@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
 import {
-  ActivityIndicator,
   Modal,
   Pressable,
   RefreshControl,
@@ -14,6 +13,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
 
 import { getErrorMessage } from '@/api/errors';
+import { DealDetailSkeleton } from '@/components/deal-detail-skeleton';
 import { useConfirmReceipt, useDeal } from '@/hooks/useDeals';
 import { useProfile } from '@/hooks/useProfile';
 import { dealScreenFor } from '@/lib/deal-routing';
@@ -59,37 +59,35 @@ export default function PostPaymentDealScreen() {
 
   const deal = dealQuery.data;
 
+  if (!deal && !dealQuery.isError) {
+    return <DealDetailSkeleton onBack={() => router.back()} />;
+  }
+
   if (!deal) {
     return (
       <SafeAreaView edges={['top', 'bottom']} style={styles.safeArea}>
         <View style={styles.centered}>
-          {dealQuery.isError ? (
-            <>
-              <Text style={styles.stateTitle}>Could not load this deal</Text>
-              <Text style={styles.stateMessage}>
-                {getErrorMessage(
-                  dealQuery.error,
-                  'Something went wrong. Please try again.',
-                )}
-              </Text>
-              <Pressable
-                accessibilityRole="button"
-                onPress={() => void dealQuery.refetch()}
-                style={[styles.modalConfirmButton, styles.retryButton]}
-              >
-                <Text style={styles.modalConfirmText}>Try again</Text>
-              </Pressable>
-              <Pressable
-                accessibilityRole="button"
-                onPress={() => router.back()}
-                style={[styles.modalCancelButton, styles.retryButton]}
-              >
-                <Text style={styles.modalCancelText}>Go back</Text>
-              </Pressable>
-            </>
-          ) : (
-            <ActivityIndicator color="#db2777" />
-          )}
+          <Text style={styles.stateTitle}>Could not load this deal</Text>
+          <Text style={styles.stateMessage}>
+            {getErrorMessage(
+              dealQuery.error,
+              'Something went wrong. Please try again.',
+            )}
+          </Text>
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => void dealQuery.refetch()}
+            style={[styles.modalConfirmButton, styles.retryButton]}
+          >
+            <Text style={styles.modalConfirmText}>Try again</Text>
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => router.back()}
+            style={[styles.modalCancelButton, styles.retryButton]}
+          >
+            <Text style={styles.modalCancelText}>Go back</Text>
+          </Pressable>
         </View>
       </SafeAreaView>
     );

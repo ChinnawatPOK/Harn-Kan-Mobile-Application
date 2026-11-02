@@ -15,6 +15,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import Svg, { Circle, Path, Rect } from "react-native-svg";
 
 import { getErrorMessage } from "@/api/errors";
+import { DealDetailSkeleton } from "@/components/deal-detail-skeleton";
 import { MockPaymentSheet } from "@/components/mock-payment-sheet";
 import {
   useDeal,
@@ -79,37 +80,35 @@ export default function JoinerDealScreen() {
 
   const deal = dealQuery.data;
 
+  if (!deal && !dealQuery.isError) {
+    return <DealDetailSkeleton onBack={() => router.back()} />;
+  }
+
   if (!deal) {
     return (
       <SafeAreaView edges={["top", "bottom"]} style={styles.safeArea}>
         <View style={styles.centered}>
-          {dealQuery.isError ? (
-            <>
-              <Text style={styles.stateTitle}>Could not load this deal</Text>
-              <Text style={styles.stateMessage}>
-                {getErrorMessage(
-                  dealQuery.error,
-                  "Something went wrong. Please try again.",
-                )}
-              </Text>
-              <Pressable
-                accessibilityRole="button"
-                onPress={() => void dealQuery.refetch()}
-                style={[styles.primaryButton, styles.retryButton]}
-              >
-                <Text style={styles.primaryButtonText}>Try again</Text>
-              </Pressable>
-              <Pressable
-                accessibilityRole="button"
-                onPress={() => router.back()}
-                style={styles.leaveButton}
-              >
-                <Text style={styles.leaveButtonText}>Go back</Text>
-              </Pressable>
-            </>
-          ) : (
-            <ActivityIndicator color="#db2777" />
-          )}
+          <Text style={styles.stateTitle}>Could not load this deal</Text>
+          <Text style={styles.stateMessage}>
+            {getErrorMessage(
+              dealQuery.error,
+              "Something went wrong. Please try again.",
+            )}
+          </Text>
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => void dealQuery.refetch()}
+            style={[styles.primaryButton, styles.retryButton]}
+          >
+            <Text style={styles.primaryButtonText}>Try again</Text>
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => router.back()}
+            style={styles.leaveButton}
+          >
+            <Text style={styles.leaveButtonText}>Go back</Text>
+          </Pressable>
         </View>
       </SafeAreaView>
     );

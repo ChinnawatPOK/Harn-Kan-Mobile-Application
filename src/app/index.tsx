@@ -1,6 +1,8 @@
-import { useRouter } from "expo-router";
+import { Redirect, useRouter } from "expo-router";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+
+import { useAuthStore } from "@/stores/auth.store";
 
 const colors = {
   pink50: "#fdf2f8",
@@ -20,6 +22,12 @@ const colors = {
 export default function SplashScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const accessToken = useAuthStore((state) => state.accessToken);
+  const isRestoring = useAuthStore((state) => state.isRestoring);
+
+  if (!isRestoring && accessToken) {
+    return <Redirect href="/(tabs)" />;
+  }
 
   return (
     <Pressable

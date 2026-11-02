@@ -1,13 +1,13 @@
-import { QueryClientProvider } from '@tanstack/react-query';
-import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
-import * as SplashScreen from 'expo-splash-screen';
-import { useEffect } from 'react';
-import { useColorScheme } from 'react-native';
+import { QueryClientProvider } from "@tanstack/react-query";
+import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from "expo-router";
+import * as SplashScreen from "expo-splash-screen";
+import { useEffect } from "react";
+import { useColorScheme } from "react-native";
 
-import { AnimatedSplashOverlay } from '@/components/animated-icon';
-import { AppStripeProvider } from '@/components/stripe-provider';
-import { queryClient } from '@/lib/query-client';
-import { useAuthStore } from '@/stores/auth.store';
+import { AnimatedSplashOverlay } from "@/components/animated-icon";
+import { AppStripeProvider } from "@/components/stripe-provider";
+import { queryClient } from "@/lib/query-client";
+import { useAuthStore } from "@/stores/auth.store";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -19,11 +19,16 @@ export default function RootLayout() {
   }, []);
 
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+    <ThemeProvider value={colorScheme === "dark" ? DarkTheme : DefaultTheme}>
       <QueryClientProvider client={queryClient}>
         <AppStripeProvider>
           <AnimatedSplashOverlay />
-          <Stack screenOptions={{ headerShown: false }} />
+          <Stack
+            screenOptions={{
+              headerShown: false,
+              contentStyle: { backgroundColor: "#fff" },
+            }}
+          />
         </AppStripeProvider>
       </QueryClientProvider>
     </ThemeProvider>

@@ -5,7 +5,7 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { useFocusEffect, useIsFocused } from "expo-router";
-import { useCallback } from "react";
+import { useCallback, useRef } from "react";
 
 import type { MyDealsParams, NearbyDealsParams } from "@/schemas/deal.schema";
 import {
@@ -100,21 +100,36 @@ export function usePayDeal() {
   });
 }
 
+function fetchDeal(dealId: string) {
+  // Viewer position is optional; it only fills in distanceMeters.
+  const coordinates = useLocationStore.getState().coordinates;
+  return getDeal(
+    dealId,
+    coordinates
+      ? { lat: coordinates.latitude, lng: coordinates.longitude }
+      : undefined,
+  );
+}
+
+/** Starts loading a deal before its screen opens, so it renders without a spinner. */
+export function usePrefetchDeal() {
+  const queryClient = useQueryClient();
+  return useCallback(
+    (dealId: string) =>
+      void queryClient.prefetchQuery({
+        queryKey: dealQueryKey(dealId),
+        queryFn: () => fetchDeal(dealId),
+      }),
+    [queryClient],
+  );
+}
+
 export function useDeal(dealId: string | undefined) {
   const accessToken = useAuthStore((state) => state.accessToken);
   const isFocused = useIsFocused();
   const query = useQuery({
     queryKey: dealQueryKey(dealId ?? ""),
-    queryFn: () => {
-      // Viewer position is optional; it only fills in distanceMeters.
-      const coordinates = useLocationStore.getState().coordinates;
-      return getDeal(
-        dealId!,
-        coordinates
-          ? { lat: coordinates.latitude, lng: coordinates.longitude }
-          : undefined,
-      );
-    },
+    queryFn: () => fetchDeal(dealId!),
     enabled: Boolean(accessToken && dealId),
     refetchOnWindowFocus: isFocused,
     // Poll only the deal on screen, and stop once it reaches a final state
@@ -131,10 +146,18 @@ export function useDeal(dealId: string | undefined) {
   });
 
   // Coming back to this screen (e.g. from the pay modal) shows fresh data.
+  // The first focus is the mount, which useQuery already covers, and
+  // cancelRefetch: false joins a request in flight (a prefetch, or the
+  // previous screen's before a <Redirect>) instead of restarting it.
   const { refetch } = query;
+  const hasFocused = useRef(false);
   useFocusEffect(
     useCallback(() => {
-      if (accessToken && dealId) void refetch();
+      if (!hasFocused.current) {
+        hasFocused.current = true;
+        return;
+      }
+      if (accessToken && dealId) void refetch({ cancelRefetch: false });
     }, [accessToken, dealId, refetch]),
   );
 

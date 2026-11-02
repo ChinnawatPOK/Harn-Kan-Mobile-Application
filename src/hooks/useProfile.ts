@@ -14,6 +14,7 @@ export function useProfile() {
     queryKey: currentUserProfileQueryKey,
     queryFn: getCurrentUserProfile,
     enabled: Boolean(accessToken),
+    staleTime: Infinity,
   });
 }
 

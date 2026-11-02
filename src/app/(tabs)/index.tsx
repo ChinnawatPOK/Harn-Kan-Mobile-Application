@@ -18,7 +18,7 @@ import { getErrorMessage } from '@/api/errors';
 import { BrandMark } from '@/components/brand-mark';
 import { useCurrentLocation } from '@/hooks/useCurrentLocation';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
-import { useNearbyDeals } from '@/hooks/useDeals';
+import { useNearbyDeals, usePrefetchDeal } from '@/hooks/useDeals';
 import type { DealCategory, NearbyDeal } from '@/schemas/deal.schema';
 import { formatBaht, formatDistance, formatTimeLeft } from '@/utils/format';
 
@@ -78,6 +78,7 @@ export default function HomeScreen() {
         : 'Current location');
 
   const query = useDebouncedValue(search.trim(), 300);
+  const prefetchDeal = usePrefetchDeal();
   const nearbyDeals = useNearbyDeals(
     coordinates
       ? {
@@ -232,9 +233,12 @@ export default function HomeScreen() {
               <DealCard
                 deal={deal}
                 key={deal.id}
+                onPressIn={() => prefetchDeal(deal.id)}
                 onPress={() =>
+                  // Nearby deals are someone else's, so open the joiner screen
+                  // directly instead of bouncing through /deal/[id].
                   router.push({
-                    pathname: '/deal/[id]',
+                    pathname: '/deal/joiner',
                     params: { id: deal.id },
                   })
                 }
@@ -254,12 +258,21 @@ export default function HomeScreen() {
   );
 }
 
-function DealCard({ deal, onPress }: { deal: Deal; onPress: () => void }) {
+function DealCard({
+  deal,
+  onPress,
+  onPressIn,
+}: {
+  deal: Deal;
+  onPress: () => void;
+  onPressIn: () => void;
+}) {
   return (
     <Pressable
       accessibilityLabel={`Open deal: ${deal.title}`}
       accessibilityRole="button"
       onPress={onPress}
+      onPressIn={onPressIn}
       style={styles.dealCard}
     >
       <View style={[styles.dealArtwork, { backgroundColor: deal.tint }]}>

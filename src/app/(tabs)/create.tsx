@@ -594,7 +594,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    paddingBottom: 112,
+    paddingBottom: 24,
   },
   topBar: {
     alignItems: "center",
