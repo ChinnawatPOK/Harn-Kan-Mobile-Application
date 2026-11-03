@@ -1,6 +1,6 @@
 # Harn-Kan Mobile Application
 
-React Native app powered by Expo SDK 57 and Expo Router.
+React Native app powered by Expo SDK 58 and Expo Router.
 
 ## Getting started
 
@@ -26,9 +26,19 @@ address reachable from your app:
 
 Set `EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY` in `.env` to your Stripe publishable
 key (`pk_test_...` for testing). Never put a Stripe secret key in the mobile app.
-The card step is mocked for now (`confirmCardPayment` in
-`src/services/payment.service.ts`); swap in Stripe's PaymentSheet once the
-backend's Stripe mode is ready.
+On iOS/Android, Pay Now calls `POST /api/payments/{paymentId}/pay`, then
+initializes and opens Stripe's native PaymentSheet with the returned
+`clientSecret`. Cancellation and card errors keep that intent in memory so
+Continue payment can reopen it without starting another payment. After
+confirmation, the screen waits for the Deal API to reflect the webhook result
+before navigating to the paid screen. Run the Stripe CLI webhook forwarding to
+the Payment Service while testing locally.
+
+Use test card `4242 4242 4242 4242`, a future expiry date, and any three-digit CVC
+with sandbox keys. Card collection is mobile only; web displays an explanatory
+error before calling `/pay`. A full app reload clears the in-memory client
+secret; resuming a pending payment after a reload requires BE secret recovery,
+which the current API does not expose.
 
 Start the User Service and Gateway before submitting the form. See
 `../Harn-Kan-Gateway/README.md` for Gateway setup.

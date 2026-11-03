@@ -1,5 +1,5 @@
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -16,7 +16,7 @@ import Svg, { Circle, Path, Rect } from "react-native-svg";
 
 import { getErrorMessage } from "@/api/errors";
 import { DealApiState } from "@/components/deal-api-state";
-import { MockPaymentSheet } from "@/components/mock-payment-sheet";
+import { assertCardPaymentReady, useCardPayment } from "@/components/stripe-provider";
 import {
   useDeal,
   useJoinDeal,
@@ -27,7 +27,6 @@ import { useNow } from "@/hooks/useNow";
 import { useProfile } from "@/hooks/useProfile";
 import { dealScreenFor } from "@/lib/deal-routing";
 import type { DealParticipant } from "@/schemas/deal.schema";
-import { confirmCardPayment } from "@/services/payment.service";
 import { formatBaht } from "@/utils/format";
 
 function initialsOf(name: string) {
@@ -59,19 +58,28 @@ function participantDetail(participant: DealParticipant) {
   }
 }
 
-export default function JoinerDealScreen() {
-  const router = useRouter();
+export default function JoinerDealRoute() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const dealId = firstParam(id);
+  // A different deal gets its own payment state and client secret.
+  return <JoinerDealScreen key={dealId} dealId={dealId} />;
+}
+
+function JoinerDealScreen({ dealId }: { dealId?: string }) {
+  const router = useRouter();
   const dealQuery = useDeal(dealId);
   const profile = useProfile();
   const joinDeal = useJoinDeal();
   const payDeal = usePayDeal();
   const leaveDeal = useLeaveDeal();
   const now = useNow();
-  // One sheet for every step: confirm the join, pay, then the card sheet.
+  const confirmCardPayment = useCardPayment();
+  const paymentBusy = useRef(false);
+  const [cardError, setCardError] = useState<unknown>(null);
+  const [paymentSubmitted, setPaymentSubmitted] = useState(false);
+  // The app modal handles Join and checkout; Stripe owns the card sheet.
   const [sheet, setSheet] = useState<
-    "confirmJoin" | "checkout" | "card" | null
+    "confirmJoin" | "checkout" | null
   >(null);
   const [isConfirmingCard, setIsConfirmingCard] = useState(false);
   // From PY5; the card sheet confirms the payment with it.
@@ -149,10 +157,11 @@ export default function JoinerDealScreen() {
   const openSlots = Math.max(0, deal.targetSlots - deal.participants.length);
   const myUserId = profile.data?.id;
 
-  const isBusy = joinDeal.isPending || payDeal.isPending || leaveDeal.isPending;
-  const actionError = joinDeal.error ?? payDeal.error ?? leaveDeal.error;
+  const isBusy = joinDeal.isPending || payDeal.isPending || leaveDeal.isPending || isConfirmingCard;
+  const actionError = cardError ?? joinDeal.error ?? payDeal.error ?? leaveDeal.error;
 
   const resetErrors = () => {
+    setCardError(null);
     joinDeal.reset();
     payDeal.reset();
     leaveDeal.reset();
@@ -173,7 +182,7 @@ export default function JoinerDealScreen() {
   };
 
   const closeSheet = () => {
-    if (joinDeal.isPending || isConfirmingCard) return;
+    if (joinDeal.isPending || payDeal.isPending || isConfirmingCard) return;
     setSheet(null);
   };
 
@@ -184,32 +193,35 @@ export default function JoinerDealScreen() {
     });
   };
 
-  const payNow = () => {
+  const payNow = async () => {
     const paymentId = me?.paymentId;
-    if (!paymentId) return;
-    resetErrors();
-    payDeal.mutate(
-      { paymentId, dealId: deal.id },
-      {
-        onSuccess: (payment) => {
-          setClientSecret(payment.clientSecret);
-          setSheet("card");
-        },
-        onError: () => setSheet(null),
-      },
-    );
-  };
-
-  // The result arrives via the webhook, so the page polls until HELD.
-  const payWithCard = async () => {
-    if (!clientSecret) return;
+    if (!paymentId || paymentBusy.current) return;
+    if (paymentSubmitted) { void dealQuery.refetch(); return; }
+    paymentBusy.current = true;
     setIsConfirmingCard(true);
+    resetErrors();
+    setSheet(null);
     try {
-      await confirmCardPayment(clientSecret);
-      setClientSecret(null);
-      setSheet(null);
-      void dealQuery.refetch();
+      assertCardPaymentReady();
+      // Reuse the same intent after cancellation or an error; /pay starts it once.
+      let secret = clientSecret;
+      if (!secret) {
+        const payment = await payDeal.mutateAsync({ paymentId, dealId: deal.id });
+        secret = payment.clientSecret;
+        setClientSecret(secret);
+      }
+      const result = await confirmCardPayment(secret);
+      if (result === 'submitted') {
+        setPaymentSubmitted(true);
+        setClientSecret(null);
+        // Stripe confirmation is followed by the webhook. The existing deal
+        // polling redirects only after the BE reports the paid participant.
+        void dealQuery.refetch();
+      }
+    } catch (error) {
+      setCardError(error);
     } finally {
+      paymentBusy.current = false;
       setIsConfirmingCard(false);
     }
   };
@@ -373,19 +385,20 @@ export default function JoinerDealScreen() {
 
           {hasSlot ? (
             <>
-              {isPaying && clientSecret ? (
+              {clientSecret && !paymentSubmitted ? (
                 <Pressable
                   accessibilityRole="button"
-                  onPress={() => setSheet("card")}
+                  disabled={isBusy}
+                  onPress={() => void payNow()}
                   style={({ pressed }) => [
                     styles.primaryButton,
                     pressed && styles.buttonPressed,
                   ]}
                 >
                   <Icon color="#fff" name="card" size={18} />
-                  <Text style={styles.primaryButtonText}>Continue payment</Text>
+                  <Text style={styles.primaryButtonText}>{isConfirmingCard ? "Processing…" : "Continue payment"}</Text>
                 </Pressable>
-              ) : isPaying ? (
+              ) : isPaying || paymentSubmitted ? (
                 <View style={styles.processingNote}>
                   <ActivityIndicator color="#b45309" size="small" />
                   <Text style={styles.processingText}>
@@ -400,7 +413,7 @@ export default function JoinerDealScreen() {
                     disabled: !canPay || reservationExpired || isBusy,
                   }}
                   disabled={!canPay || reservationExpired || isBusy}
-                  onPress={payNow}
+                  onPress={() => void payNow()}
                   style={({ pressed }) => [
                     styles.primaryButton,
                     (!canPay || reservationExpired || isBusy) &&
@@ -410,7 +423,7 @@ export default function JoinerDealScreen() {
                 >
                   <Icon color="#fff" name="card" size={18} />
                   <Text style={styles.primaryButtonText}>
-                    {payDeal.isPending
+                    {(payDeal.isPending || isConfirmingCard)
                       ? "Paying…"
                       : reservationExpired
                         ? "Reservation expired"
@@ -465,8 +478,7 @@ export default function JoinerDealScreen() {
         transparent
         visible={
           sheet === "confirmJoin" ||
-          (sheet === "checkout" && isReserved) ||
-          (sheet === "card" && Boolean(clientSecret))
+          (sheet === "checkout" && isReserved)
         }
       >
         <View style={styles.modalRoot}>
@@ -476,14 +488,7 @@ export default function JoinerDealScreen() {
             onPress={closeSheet}
             style={styles.modalBackdrop}
           />
-          {sheet === "card" ? (
-            <MockPaymentSheet
-              amount={amountToPay}
-              isProcessing={isConfirmingCard}
-              onCancel={closeSheet}
-              onPay={() => void payWithCard()}
-            />
-          ) : sheet === "confirmJoin" ? (
+          {sheet === "confirmJoin" ? (
             <View style={styles.checkoutCard}>
               <View style={styles.checkoutHandle} />
               <View style={styles.checkoutWalletIcon}>
@@ -542,7 +547,7 @@ export default function JoinerDealScreen() {
               <Pressable
                 accessibilityRole="button"
                 disabled={!canPay || reservationExpired || isBusy}
-                onPress={payNow}
+                onPress={() => void payNow()}
                 style={({ pressed }) => [
                   styles.primaryButton,
                   styles.checkoutPayButton,
@@ -553,7 +558,7 @@ export default function JoinerDealScreen() {
               >
                 <Icon color="#fff" name="card" size={18} />
                 <Text style={styles.primaryButtonText}>
-                  {payDeal.isPending ? "Paying…" : "Pay Now"}
+                  {payDeal.isPending || isConfirmingCard ? "Paying…" : "Pay Now"}
                 </Text>
                 <Text style={styles.checkoutCountdown}>{countdown}</Text>
               </Pressable>

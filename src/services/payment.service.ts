@@ -6,15 +6,8 @@ export async function payPayment(paymentId: string): Promise<PayResponse> {
   const { data } = await apiClient.post<PayResponse>(
     endpoints.payments.pay(paymentId),
   );
+  if (!/^pi_[A-Za-z0-9]+_secret_[A-Za-z0-9]+$/.test(data.clientSecret ?? "")) {
+    throw new Error("The server did not return a valid Stripe payment.");
+  }
   return data;
-}
-
-const MOCK_CONFIRM_DELAY_MS = 1200;
-
-/**
- * Mock of Stripe's PaymentSheet confirm with the PY5 clientSecret. Swap for
- * @stripe/stripe-react-native once Stripe mode and its webhook are built.
- */
-export async function confirmCardPayment(_clientSecret: string): Promise<void> {
-  await new Promise((resolve) => setTimeout(resolve, MOCK_CONFIRM_DELAY_MS));
 }
