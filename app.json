@@ -46,11 +46,24 @@
           "merchantIdentifier": [],
           "enableGooglePay": false
         }
+      ],
+      [
+        "expo-notifications",
+        {
+          "color": "#208AEF",
+          "defaultChannel": "default"
+        }
       ]
     ],
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "owner": "superstardogs-team",
+    "extra": {
+      "eas": {
+        "projectId": "d8b253c7-a49e-411b-a6ef-979421655a76"
+      }
     }
   }
 }

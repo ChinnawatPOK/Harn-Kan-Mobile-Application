@@ -1,19 +1,21 @@
-import { Tabs } from 'expo-router';
-import { StyleSheet, View, type ColorValue } from 'react-native';
-import Svg, { Circle, Path } from 'react-native-svg';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { usePushNotifications } from "@/hooks/usePushNotifications";
+import { Tabs } from "expo-router";
+import { StyleSheet, View, type ColorValue } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import Svg, { Circle, Path } from "react-native-svg";
 
 const colors = {
-  active: '#be185d',
-  activeBackground: '#fce7f3',
-  inactive: '#94a3b8',
-  border: '#f1f5f9',
+  active: "#be185d",
+  activeBackground: "#fce7f3",
+  inactive: "#94a3b8",
+  border: "#f1f5f9",
 };
 
-type TabIconName = 'home' | 'plus' | 'ticket' | 'profile';
+type TabIconName = "home" | "plus" | "ticket" | "profile";
 
 export default function TabsLayout() {
   const insets = useSafeAreaInsets();
+  usePushNotifications();
 
   return (
     <Tabs
@@ -35,9 +37,14 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Explore',
+          title: "Explore",
           tabBarIcon: ({ focused, color }) => (
-            <View style={[styles.iconContainer, focused && styles.iconContainerActive]}>
+            <View
+              style={[
+                styles.iconContainer,
+                focused && styles.iconContainerActive,
+              ]}
+            >
               <TabIcon color={color} name="home" />
             </View>
           ),
@@ -46,9 +53,14 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="create"
         options={{
-          title: 'Create',
+          title: "Create",
           tabBarIcon: ({ focused, color }) => (
-            <View style={[styles.iconContainer, focused && styles.iconContainerActive]}>
+            <View
+              style={[
+                styles.iconContainer,
+                focused && styles.iconContainerActive,
+              ]}
+            >
               <TabIcon color={color} name="plus" />
             </View>
           ),
@@ -57,9 +69,14 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="my-deals"
         options={{
-          title: 'My deals',
+          title: "My deals",
           tabBarIcon: ({ focused, color }) => (
-            <View style={[styles.iconContainer, focused && styles.iconContainerActive]}>
+            <View
+              style={[
+                styles.iconContainer,
+                focused && styles.iconContainerActive,
+              ]}
+            >
               <TabIcon color={color} name="ticket" />
             </View>
           ),
@@ -68,9 +85,14 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="profile"
         options={{
-          title: 'Profile',
+          title: "Profile",
           tabBarIcon: ({ focused, color }) => (
-            <View style={[styles.iconContainer, focused && styles.iconContainerActive]}>
+            <View
+              style={[
+                styles.iconContainer,
+                focused && styles.iconContainerActive,
+              ]}
+            >
               <TabIcon color={color} name="profile" />
             </View>
           ),
@@ -92,20 +114,20 @@ function TabIcon({ name, color }: { name: TabIconName; color: ColorValue }) {
       strokeLinejoin="round"
       strokeWidth={1.8}
     >
-      {name === 'home' ? (
+      {name === "home" ? (
         <>
           <Path d="m3 11 9-8 9 8" />
           <Path d="M5 10v10h14V10M9 20v-6h6v6" />
         </>
       ) : null}
-      {name === 'plus' ? <Path d="M12 5v14M5 12h14" /> : null}
-      {name === 'ticket' ? (
+      {name === "plus" ? <Path d="M12 5v14M5 12h14" /> : null}
+      {name === "ticket" ? (
         <>
           <Path d="M4 6h16v4a2 2 0 0 0 0 4v4H4v-4a2 2 0 0 0 0-4V6Z" />
           <Path d="M13 9h3M13 15h3M8 9v6" />
         </>
       ) : null}
-      {name === 'profile' ? (
+      {name === "profile" ? (
         <>
           <Circle cx="12" cy="8" r="4" />
           <Path d="M4 21a8 8 0 0 1 16 0" />
@@ -117,7 +139,7 @@ function TabIcon({ name, color }: { name: TabIconName; color: ColorValue }) {
 
 const styles = StyleSheet.create({
   tabBar: {
-    backgroundColor: 'rgba(255, 255, 255, 0.96)',
+    backgroundColor: "rgba(255, 255, 255, 0.96)",
     borderTopColor: colors.border,
     borderTopWidth: StyleSheet.hairlineWidth,
     paddingHorizontal: 8,
@@ -128,14 +150,14 @@ const styles = StyleSheet.create({
   },
   tabLabel: {
     fontSize: 10,
-    fontWeight: '700',
+    fontWeight: "700",
     marginTop: 0,
   },
   iconContainer: {
-    alignItems: 'center',
+    alignItems: "center",
     borderRadius: 999,
     height: 32,
-    justifyContent: 'center',
+    justifyContent: "center",
     width: 44,
   },
   iconContainerActive: {

@@ -1,6 +1,8 @@
 import { apiClient } from "@/api/client";
 import { endpoints } from "@/api/endpoints";
 import type {
+  DevicePlatform,
+  DeviceRegistration,
   Notification,
   NotificationCategory,
   NotificationList,
@@ -44,4 +46,19 @@ export async function updateNotificationPreferences(
     { categories },
   );
   return data;
+}
+
+export async function registerDevice(
+  token: string,
+  platform: DevicePlatform,
+): Promise<DeviceRegistration> {
+  const { data } = await apiClient.put<DeviceRegistration>(
+    endpoints.notifications.devices,
+    { token, platform },
+  );
+  return data;
+}
+
+export async function unregisterDevice(token: string): Promise<void> {
+  await apiClient.delete(endpoints.notifications.deviceByToken(token));
 }

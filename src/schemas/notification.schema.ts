@@ -29,3 +29,19 @@ export type NotificationList = {
   unreadCount: number;
   items: Notification[];
 };
+
+export type DevicePlatform = "ios" | "android";
+
+export type DeviceRegistration = {
+  token: string;
+  userId: string;
+  platform: DevicePlatform;
+  updatedAt: string;
+};
+
+/** `data` the Notification Service attaches to a push. */
+export type PushNotificationData = {
+  type?: NotificationType;
+  dealId?: string;
+  notificationId?: string;
+};
