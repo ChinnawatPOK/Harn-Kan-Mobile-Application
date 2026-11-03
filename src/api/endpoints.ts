@@ -24,6 +24,9 @@ export const endpoints = {
     preferences: "/api/notifications/preferences",
     markRead: (notificationId: string) =>
       `/api/notifications/${encodeURIComponent(notificationId)}/read`,
+    devices: "/api/notifications/devices",
+    deviceByToken: (token: string) =>
+      `/api/notifications/devices/${encodeURIComponent(token)}`,
   },
   users: {
     me: "/api/users/me",

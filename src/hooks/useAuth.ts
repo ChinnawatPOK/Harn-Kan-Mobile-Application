@@ -1,6 +1,12 @@
 import { useShallow } from "zustand/react/shallow";
 
+import { unregisterPushDevice } from "@/lib/push-notifications";
 import { useAuthStore } from "@/stores/auth.store";
+
+async function logout() {
+  await unregisterPushDevice();
+  await useAuthStore.getState().clearSession();
+}
 
 export function useAuth() {
   return useAuthStore(
@@ -9,7 +15,7 @@ export function useAuth() {
       isAuthenticated: Boolean(state.accessToken),
       isRestoring: state.isRestoring,
       saveAccessToken: state.saveAccessToken,
-      logout: state.clearSession,
+      logout,
     })),
   );
 }
