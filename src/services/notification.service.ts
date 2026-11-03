@@ -3,13 +3,20 @@ import { endpoints } from "@/api/endpoints";
 import type {
   Notification,
   NotificationCategory,
+  NotificationList,
   NotificationPreferences,
 } from "@/schemas/notification.schema";
 
-export async function getNotifications(): Promise<Notification[]> {
-  const { data } = await apiClient.get<Notification[]>(
+export async function getNotifications(): Promise<NotificationList> {
+  const { data } = await apiClient.get<Notification[] | NotificationList>(
     endpoints.notifications.list,
   );
+  if (Array.isArray(data)) {
+    return {
+      unreadCount: data.filter((item) => !item.read).length,
+      items: data,
+    };
+  }
   return data;
 }
 

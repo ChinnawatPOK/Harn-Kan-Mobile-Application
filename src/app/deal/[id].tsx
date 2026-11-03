@@ -13,7 +13,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import Svg, { Circle, Path } from "react-native-svg";
 
 import { getErrorMessage } from "@/api/errors";
-import { DealDetailSkeleton } from "@/components/deal-detail-skeleton";
+import { DealApiState } from "@/components/deal-api-state";
 import { useCancelDeal, useDeal } from "@/hooks/useDeals";
 import { useNow } from "@/hooks/useNow";
 import { dealScreenFor } from "@/lib/deal-routing";
@@ -74,7 +74,7 @@ export default function DealScreen() {
   const deal = dealQuery.data;
 
   if (!deal && !dealQuery.isError) {
-    return <DealDetailSkeleton onBack={() => router.back()} />;
+    return <DealApiState isLoading message="Loading deal…" />;
   }
 
   if (!deal) {

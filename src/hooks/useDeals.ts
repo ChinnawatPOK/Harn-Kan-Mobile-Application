@@ -7,6 +7,7 @@ import {
 import { useFocusEffect, useIsFocused } from "expo-router";
 import { useCallback, useRef } from "react";
 
+import { type DealScreen, dealScreenFor } from "@/lib/deal-routing";
 import type { MyDealsParams, NearbyDealsParams } from "@/schemas/deal.schema";
 import {
   cancelDeal,
@@ -120,6 +121,25 @@ export function usePrefetchDeal() {
         queryKey: dealQueryKey(dealId),
         queryFn: () => fetchDeal(dealId),
       }),
+    [queryClient],
+  );
+}
+
+export function useResolveDealScreen() {
+  const queryClient = useQueryClient();
+  return useCallback(
+    async (dealId: string): Promise<DealScreen> => {
+      try {
+        const deal = await queryClient.fetchQuery({
+          queryKey: dealQueryKey(dealId),
+          queryFn: () => fetchDeal(dealId),
+        });
+        return dealScreenFor(deal);
+      } catch {
+        // /deal/[id] shows the error with a retry.
+        return "/deal/[id]";
+      }
+    },
     [queryClient],
   );
 }

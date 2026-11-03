@@ -14,6 +14,7 @@ import Svg, { Circle, Path } from "react-native-svg";
 
 import { getErrorMessage } from "@/api/errors";
 import { useMyDeals } from "@/hooks/useDeals";
+import { type DealScreen, myDealScreenFor } from "@/lib/deal-routing";
 import type {
   DealCategory,
   DealRole,
@@ -47,6 +48,7 @@ type Deal = {
   status: StatusLabel;
   role: Exclude<HistoryRole, "All Roles">;
   readiness: string | null;
+  screen: DealScreen;
 };
 
 const categories: Category[] = ["All", "Food", "Drink"];
@@ -97,6 +99,7 @@ function toDealCard(deal: MyDeal, tab: MainTab): Deal {
       status === "Waiting"
         ? `${deal.readySlots} of ${deal.targetSlots} participants ready`
         : null,
+    screen: myDealScreenFor(deal),
   };
 }
 
@@ -173,16 +176,15 @@ export default function MyDealsTab() {
     if (tab === "history") setHistoryCategory(category);
   };
 
-  // The detail screen picks the host / participant / closed view itself.
   const openDeal = (deal: Deal) => {
-    router.push({ pathname: "/deal/[id]", params: { id: deal.id } });
+    router.push({ pathname: deal.screen, params: { id: deal.id } });
   };
 
   const sectionTitle =
     tab === "created"
-      ? "Active Deals You Host"
+      ? "Deals You're Hosting"
       : tab === "joined"
-        ? "Active Deals You Joined"
+        ? "Deals You've Joined"
         : "Past Deals";
 
   return (
@@ -198,12 +200,6 @@ export default function MyDealsTab() {
         }
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.topBar}>
-          <View style={styles.topBarSpacer} />
-          <Text style={styles.topBarTitle}>My Deals</Text>
-          <View style={styles.topBarSpacer} />
-        </View>
-
         <View style={styles.content}>
           <View style={styles.mainTabs}>
             {(["created", "joined", "history"] as const).map((item) => {
@@ -383,13 +379,7 @@ function FilterChip({
   );
 }
 
-function DealCard({
-  deal,
-  onPress,
-}: {
-  deal: Deal;
-  onPress: () => void;
-}) {
+function DealCard({ deal, onPress }: { deal: Deal; onPress: () => void }) {
   const badgeStyle = statusStyle[deal.status];
   return (
     <Pressable

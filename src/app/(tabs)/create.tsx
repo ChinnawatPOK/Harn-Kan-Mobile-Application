@@ -135,12 +135,6 @@ export default function CreateTab() {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.topBar}>
-          <View style={styles.topBarSpacer} />
-          <Text style={styles.topBarTitle}>Create a deal</Text>
-          <View style={styles.topBarSpacer} />
-        </View>
-
         <View style={styles.content}>
           <View style={styles.intro}>
             <Text style={styles.subtitle}>Start a group purchase</Text>

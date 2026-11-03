@@ -6,8 +6,14 @@ export type NotificationPreferences = {
   updatedAt?: string;
 };
 
+export type NotificationType =
+  | "DEAL_CREATED"
+  | "DEAL_CANCELLED"
+  | "DEAL_EXPIRED";
+
 export type Notification = {
   id: string;
+  type?: NotificationType;
   eventId: string;
   userId: string;
   dealId: string;
@@ -17,4 +23,9 @@ export type Notification = {
   read: boolean;
   createdAt: string;
   updatedAt: string;
+};
+
+export type NotificationList = {
+  unreadCount: number;
+  items: Notification[];
 };

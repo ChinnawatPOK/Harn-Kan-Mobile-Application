@@ -1191,9 +1191,9 @@ function MyDealsScreen({
           <div>
             <p className="text-xl font-extrabold tracking-tight text-slate-950">
               {tab === "created"
-                ? "Active Deals You Host"
+                ? "Deals You're Hosting"
                 : tab === "joined"
-                  ? "Active Deals You Joined"
+                  ? "Deals You've Joined"
                   : "Past Deals"}
             </p>
             <p className="mt-1 text-xs font-semibold text-slate-400">

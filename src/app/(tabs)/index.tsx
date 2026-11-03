@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react';
-import { useRouter } from 'expo-router';
+import { useRouter } from "expo-router";
+import { useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -10,19 +10,20 @@ import {
   TextInput,
   TouchableOpacity,
   View,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import Svg, { Path } from 'react-native-svg';
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import Svg, { Path } from "react-native-svg";
 
-import { getErrorMessage } from '@/api/errors';
-import { BrandMark } from '@/components/brand-mark';
-import { useCurrentLocation } from '@/hooks/useCurrentLocation';
-import { useDebouncedValue } from '@/hooks/useDebouncedValue';
-import { useNearbyDeals, usePrefetchDeal } from '@/hooks/useDeals';
-import type { DealCategory, NearbyDeal } from '@/schemas/deal.schema';
-import { formatBaht, formatDistance, formatTimeLeft } from '@/utils/format';
+import { getErrorMessage } from "@/api/errors";
+import { BrandMark } from "@/components/brand-mark";
+import { useCurrentLocation } from "@/hooks/useCurrentLocation";
+import { useNearbyDeals, usePrefetchDeal } from "@/hooks/useDeals";
+import { useDebouncedValue } from "@/hooks/useDebouncedValue";
+import { useUnreadNotificationCount } from "@/hooks/useNotifications";
+import type { DealCategory, NearbyDeal } from "@/schemas/deal.schema";
+import { formatBaht, formatDistance, formatTimeLeft } from "@/utils/format";
 
-type Category = 'All' | 'Food' | 'Drink';
+type Category = "All" | "Food" | "Drink";
 
 type Deal = {
   id: string;
@@ -39,53 +40,54 @@ type Deal = {
 
 const NEARBY_RADIUS_METERS = 500;
 
-const categoryValues: Record<Exclude<Category, 'All'>, DealCategory> = {
-  Food: 'FOOD',
-  Drink: 'DRINK',
+const categoryValues: Record<Exclude<Category, "All">, DealCategory> = {
+  Food: "FOOD",
+  Drink: "DRINK",
 };
 
 function toDealCard(deal: NearbyDeal): Deal {
-  const isFood = deal.category === 'FOOD';
+  const isFood = deal.category === "FOOD";
   return {
     id: deal.id,
     title: deal.dealName,
-    subtitle: deal.details || (isFood ? 'Food' : 'Drink'),
+    subtitle: deal.details || (isFood ? "Food" : "Drink"),
     price: formatBaht(deal.pricePerSlot),
     joined: `${deal.joinedSlots} of ${deal.targetSlots} joined`,
     distance: formatDistance(deal.distanceMeters),
     timeLeft: formatTimeLeft(deal.expiresAt),
-    emoji: isFood ? '🍱' : '🧋',
-    tint: isFood ? '#fff0f6' : '#fff3ec',
+    emoji: isFood ? "🍱" : "🧋",
+    tint: isFood ? "#fff0f6" : "#fff3ec",
     initials: deal.participantInitials,
   };
 }
 
-const categories: Category[] = ['All', 'Food', 'Drink'];
-const pink = '#d82f78';
+const categories: Category[] = ["All", "Food", "Drink"];
+const pink = "#d82f78";
 
 export default function HomeScreen() {
   const router = useRouter();
-  const [category, setCategory] = useState<Category>('All');
-  const [search, setSearch] = useState('');
+  const [category, setCategory] = useState<Category>("All");
+  const [search, setSearch] = useState("");
   const { coordinates, areaName, isLocating, permission, refreshLocation } =
     useCurrentLocation();
   const locationLabel =
     areaName ??
     (isLocating
-      ? 'Locating…'
-      : permission === 'denied'
-        ? 'Location off'
-        : 'Current location');
+      ? "Locating…"
+      : permission === "denied"
+        ? "Location off"
+        : "Current location");
 
   const query = useDebouncedValue(search.trim(), 300);
   const prefetchDeal = usePrefetchDeal();
+  const unreadCount = useUnreadNotificationCount();
   const nearbyDeals = useNearbyDeals(
     coordinates
       ? {
           lat: coordinates.latitude,
           lng: coordinates.longitude,
           radius: NEARBY_RADIUS_METERS,
-          category: category === 'All' ? undefined : categoryValues[category],
+          category: category === "All" ? undefined : categoryValues[category],
           q: query || undefined,
         }
       : null,
@@ -107,29 +109,30 @@ export default function HomeScreen() {
   };
 
   const emptyState = !coordinates
-    ? permission === 'denied'
+    ? permission === "denied"
       ? {
-          title: 'Location is off',
-          message: 'Turn on location in Settings to see deals near you.',
+          title: "Location is off",
+          message: "Turn on location in Settings to see deals near you.",
         }
       : null
     : nearbyDeals.isError
       ? {
-          title: 'Could not load deals',
+          title: "Could not load deals",
           message: getErrorMessage(
             nearbyDeals.error,
-            'Something went wrong. Please try again.',
+            "Something went wrong. Please try again.",
           ),
         }
       : {
-          title: 'No deals found',
-          message: query || category !== 'All'
-            ? 'Try a different search or category.'
-            : 'No deals nearby yet. Create one!',
+          title: "No deals found",
+          message:
+            query || category !== "All"
+              ? "Try a different search or category."
+              : "No deals nearby yet. Create one!",
         };
 
   return (
-    <SafeAreaView edges={['top']} style={styles.safeArea}>
+    <SafeAreaView edges={["top"]} style={styles.safeArea}>
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
@@ -157,8 +160,12 @@ export default function HomeScreen() {
           </View>
           <TouchableOpacity
             accessibilityRole="button"
-            accessibilityLabel="Notifications"
-            onPress={() => router.push('/notifications')}
+            accessibilityLabel={
+              unreadCount > 0
+                ? `Notifications, ${unreadCount} unread`
+                : "Notifications"
+            }
+            onPress={() => router.push("/notifications")}
             style={styles.notificationButton}
           >
             <Svg
@@ -174,7 +181,7 @@ export default function HomeScreen() {
               <Path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" />
               <Path d="M10 21h4" />
             </Svg>
-            <View style={styles.notificationDot} />
+            {unreadCount > 0 ? <View style={styles.notificationDot} /> : null}
           </TouchableOpacity>
         </View>
 
@@ -193,7 +200,7 @@ export default function HomeScreen() {
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Clear search"
-              onPress={() => setSearch('')}
+              onPress={() => setSearch("")}
               style={styles.clearButton}
             >
               <Text style={styles.clearText}>×</Text>
@@ -210,9 +217,17 @@ export default function HomeScreen() {
                 accessibilityState={{ selected }}
                 key={item}
                 onPress={() => setCategory(item)}
-                style={[styles.filterChip, selected && styles.filterChipSelected]}
+                style={[
+                  styles.filterChip,
+                  selected && styles.filterChipSelected,
+                ]}
               >
-                <Text style={[styles.filterText, selected && styles.filterTextSelected]}>
+                <Text
+                  style={[
+                    styles.filterText,
+                    selected && styles.filterTextSelected,
+                  ]}
+                >
                   {item}
                 </Text>
               </Pressable>
@@ -238,7 +253,7 @@ export default function HomeScreen() {
                   // Nearby deals are someone else's, so open the joiner screen
                   // directly instead of bouncing through /deal/[id].
                   router.push({
-                    pathname: '/deal/joiner',
+                    pathname: "/deal/joiner",
                     params: { id: deal.id },
                   })
                 }
@@ -297,7 +312,7 @@ function DealCard({
                 style={[
                   styles.avatar,
                   index > 0 && styles.avatarOverlap,
-                  { backgroundColor: index % 2 === 0 ? '#f5cadd' : '#f5e4ae' },
+                  { backgroundColor: index % 2 === 0 ? "#f5cadd" : "#f5e4ae" },
                 ]}
               >
                 <Text style={styles.avatarText}>{initial}</Text>
@@ -318,98 +333,98 @@ function DealCard({
 
 const styles = StyleSheet.create({
   safeArea: {
-    backgroundColor: '#fff',
+    backgroundColor: "#fff",
     flex: 1,
   },
   scrollContent: {
     paddingBottom: 28,
   },
   header: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
     paddingHorizontal: 20,
     paddingTop: 10,
     paddingBottom: 17,
   },
   locationButton: {
-    alignItems: 'center',
-    flexDirection: 'row',
+    alignItems: "center",
+    flexDirection: "row",
     gap: 4,
     marginTop: 5,
   },
   locationText: {
-    color: '#171321',
+    color: "#171321",
     fontSize: 18,
-    fontWeight: '800',
+    fontWeight: "800",
   },
   chevron: {
     color: pink,
     fontSize: 23,
-    fontWeight: '700',
+    fontWeight: "700",
     lineHeight: 24,
   },
   notificationButton: {
-    alignItems: 'center',
-    backgroundColor: '#f5f3f6',
+    alignItems: "center",
+    backgroundColor: "#f5f3f6",
     borderRadius: 22,
     height: 44,
-    justifyContent: 'center',
+    justifyContent: "center",
     width: 44,
   },
   notificationDot: {
     backgroundColor: pink,
-    borderColor: '#f5f3f6',
+    borderColor: "#f5f3f6",
     borderRadius: 5,
     borderWidth: 1.5,
     height: 9,
-    position: 'absolute',
+    position: "absolute",
     right: 10,
     top: 9,
     width: 9,
   },
   searchBox: {
-    alignItems: 'center',
-    backgroundColor: '#f5f3f6',
+    alignItems: "center",
+    backgroundColor: "#f5f3f6",
     borderRadius: 17,
-    flexDirection: 'row',
+    flexDirection: "row",
     marginHorizontal: 20,
     minHeight: 49,
     paddingHorizontal: 14,
   },
   searchIcon: {
-    color: '#888390',
+    color: "#888390",
     fontSize: 24,
     lineHeight: 27,
     marginRight: 10,
   },
   searchInput: {
-    color: '#171321',
+    color: "#171321",
     flex: 1,
     fontSize: 13,
-    fontWeight: '600',
+    fontWeight: "600",
     paddingVertical: 12,
   },
   clearButton: {
-    alignItems: 'center',
+    alignItems: "center",
     height: 28,
-    justifyContent: 'center',
+    justifyContent: "center",
     width: 28,
   },
   clearText: {
-    color: '#888390',
+    color: "#888390",
     fontSize: 22,
     lineHeight: 24,
   },
   filters: {
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: 9,
     paddingHorizontal: 20,
     paddingTop: 13,
   },
   filterChip: {
-    alignItems: 'center',
-    backgroundColor: '#fff2f8',
+    alignItems: "center",
+    backgroundColor: "#fff2f8",
     borderRadius: 18,
     minWidth: 58,
     paddingHorizontal: 16,
@@ -424,54 +439,54 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   filterText: {
-    color: '#a9215b',
+    color: "#a9215b",
     fontSize: 12,
-    fontWeight: '800',
+    fontWeight: "800",
   },
   filterTextSelected: {
-    color: '#fff',
+    color: "#fff",
   },
   sectionHeader: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
     marginBottom: 12,
     marginTop: 26,
     paddingHorizontal: 20,
   },
   sectionTitle: {
-    color: '#171321',
+    color: "#171321",
     fontSize: 19,
-    fontWeight: '800',
+    fontWeight: "800",
     letterSpacing: -0.2,
   },
   sectionCaption: {
-    color: '#a09ba7',
+    color: "#a09ba7",
     fontSize: 11,
-    fontWeight: '700',
+    fontWeight: "700",
   },
   dealList: {
     gap: 12,
     paddingHorizontal: 16,
   },
   dealCard: {
-    alignItems: 'center',
-    backgroundColor: '#fff',
+    alignItems: "center",
+    backgroundColor: "#fff",
     borderRadius: 23,
-    flexDirection: 'row',
+    flexDirection: "row",
     minHeight: 122,
     padding: 11,
-    shadowColor: '#171321',
+    shadowColor: "#171321",
     shadowOffset: { width: 0, height: 5 },
     shadowOpacity: 0.06,
     shadowRadius: 14,
     elevation: 2,
   },
   dealArtwork: {
-    alignItems: 'center',
+    alignItems: "center",
     borderRadius: 17,
     height: 84,
-    justifyContent: 'center',
+    justifyContent: "center",
     width: 74,
   },
   dealEmoji: {
@@ -484,109 +499,109 @@ const styles = StyleSheet.create({
     paddingRight: 7,
   },
   timeRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
+    alignItems: "center",
+    flexDirection: "row",
     gap: 3,
   },
   clockIcon: {
     color: pink,
     fontSize: 13,
-    fontWeight: '800',
+    fontWeight: "800",
   },
   timeText: {
     color: pink,
     fontSize: 9,
-    fontWeight: '800',
-    textTransform: 'uppercase',
+    fontWeight: "800",
+    textTransform: "uppercase",
   },
   dealTitle: {
-    color: '#171321',
+    color: "#171321",
     fontSize: 13,
-    fontWeight: '800',
+    fontWeight: "800",
     marginTop: 4,
   },
   dealSubtitle: {
-    color: '#96919e',
+    color: "#96919e",
     fontSize: 10,
-    fontWeight: '500',
+    fontWeight: "500",
     marginTop: 2,
   },
   joinedRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
+    alignItems: "center",
+    flexDirection: "row",
     marginTop: 9,
   },
   avatarStack: {
-    flexDirection: 'row',
+    flexDirection: "row",
     marginRight: 6,
   },
   avatar: {
-    alignItems: 'center',
-    borderColor: '#fff',
+    alignItems: "center",
+    borderColor: "#fff",
     borderRadius: 11,
     borderWidth: 1.5,
     height: 22,
-    justifyContent: 'center',
+    justifyContent: "center",
     width: 22,
   },
   avatarOverlap: {
     marginLeft: -7,
   },
   avatarText: {
-    color: '#655866',
+    color: "#655866",
     fontSize: 6,
-    fontWeight: '900',
+    fontWeight: "900",
   },
   joinedText: {
-    color: '#77717e',
+    color: "#77717e",
     fontSize: 8,
-    fontWeight: '700',
+    fontWeight: "700",
   },
   priceColumn: {
-    alignItems: 'flex-end',
-    alignSelf: 'stretch',
-    borderLeftColor: '#f0edf2',
+    alignItems: "flex-end",
+    alignSelf: "stretch",
+    borderLeftColor: "#f0edf2",
     borderLeftWidth: 1,
-    justifyContent: 'flex-start',
+    justifyContent: "flex-start",
     paddingLeft: 9,
     paddingTop: 5,
     width: 69,
   },
   price: {
-    color: '#171321',
+    color: "#171321",
     fontSize: 13,
-    fontWeight: '900',
+    fontWeight: "900",
   },
   perPerson: {
-    color: '#aaa5b0',
+    color: "#aaa5b0",
     fontSize: 8,
-    fontWeight: '600',
+    fontWeight: "600",
     marginTop: 3,
   },
   distance: {
-    color: '#898491',
+    color: "#898491",
     fontSize: 8,
-    fontWeight: '700',
-    marginTop: 'auto',
+    fontWeight: "700",
+    marginTop: "auto",
     paddingBottom: 3,
   },
   emptyState: {
-    alignItems: 'center',
-    backgroundColor: '#fff7fb',
+    alignItems: "center",
+    backgroundColor: "#fff7fb",
     borderRadius: 20,
     marginHorizontal: 20,
     padding: 25,
   },
   emptyTitle: {
-    color: '#171321',
+    color: "#171321",
     fontSize: 15,
-    fontWeight: '800',
+    fontWeight: "800",
   },
   emptyMessage: {
-    color: '#898594',
+    color: "#898594",
     fontSize: 12,
     marginTop: 5,
-    textAlign: 'center',
+    textAlign: "center",
   },
   loading: {
     marginTop: 32,
