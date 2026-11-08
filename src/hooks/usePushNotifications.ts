@@ -8,6 +8,7 @@ import {
   notificationsQueryKey,
   useMarkNotificationRead,
 } from "@/hooks/useNotifications";
+import { useSimulatorPushBanner } from "@/hooks/useSimulatorPushBanner";
 import {
   handlePushTokenChange,
   pushDataOf,
@@ -26,6 +27,7 @@ export function usePushNotifications() {
   const accessToken = useAuthStore((state) => state.accessToken);
   const markRead = useMarkNotificationRead();
   const resolveDealScreen = useResolveDealScreen();
+  useSimulatorPushBanner();
 
   // Register on every start after login, and again if the token rolls.
   useEffect(() => {

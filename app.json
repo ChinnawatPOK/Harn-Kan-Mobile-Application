@@ -8,6 +8,7 @@
     "scheme": "harnkanmobileapplication",
     "userInterfaceStyle": "automatic",
     "ios": {
+      "bundleIdentifier": "com.harnkan.mobile",
       "icon": "./assets/expo.icon"
     },
     "android": {
@@ -52,6 +53,14 @@
         {
           "color": "#208AEF",
           "defaultChannel": "default"
+        }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "useFrameworks": "dynamic"
+          }
         }
       ]
     ],

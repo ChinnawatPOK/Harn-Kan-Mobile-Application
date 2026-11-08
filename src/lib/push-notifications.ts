@@ -38,7 +38,8 @@ let inFlight: Promise<void> | null = null;
 
 function getProjectId(): string | undefined {
   return (
-    Constants.expoConfig?.extra?.eas?.projectId ?? Constants.easConfig?.projectId
+    Constants.expoConfig?.extra?.eas?.projectId ??
+    Constants.easConfig?.projectId
   );
 }
 
@@ -72,7 +73,10 @@ async function sync(
   devicePushToken?: Notifications.DevicePushToken,
 ): Promise<void> {
   if (Platform.OS !== "ios" && Platform.OS !== "android") return;
-  if (!Device.isDevice) return; // Simulators can't receive remote pushes.
+  if (!Device.isDevice) {
+    await hasPermission();
+    return;
+  }
 
   const projectId = getProjectId();
   if (!projectId) {
