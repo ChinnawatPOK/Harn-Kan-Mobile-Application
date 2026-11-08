@@ -1,5 +1,6 @@
 import { apiClient } from "@/api/client";
 import { endpoints } from "@/api/endpoints";
+import type { Coordinates } from "@/lib/location";
 import type {
   UpdateUserProfileInput,
   UserProfile,
@@ -24,6 +25,13 @@ export async function updateCurrentUserProfile(
     },
   );
   return data.data;
+}
+
+export async function updateCurrentUserLocation({
+  latitude,
+  longitude,
+}: Coordinates): Promise<void> {
+  await apiClient.patch(endpoints.users.location, { latitude, longitude });
 }
 
 export async function deactivateCurrentUser(): Promise<void> {

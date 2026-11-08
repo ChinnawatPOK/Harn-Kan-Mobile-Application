@@ -1,3 +1,4 @@
+import { useLocationSync } from "@/hooks/useLocationSync";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
 import { Tabs } from "expo-router";
 import { StyleSheet, View, type ColorValue } from "react-native";
@@ -16,6 +17,7 @@ type TabIconName = "home" | "plus" | "ticket" | "profile";
 export default function TabsLayout() {
   const insets = useSafeAreaInsets();
   usePushNotifications();
+  useLocationSync();
 
   return (
     <Tabs

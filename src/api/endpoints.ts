@@ -30,6 +30,7 @@ export const endpoints = {
   },
   users: {
     me: "/api/users/me",
+    location: "/api/users/me/location",
     deactivate: "/api/users/me",
   },
 } as const;
