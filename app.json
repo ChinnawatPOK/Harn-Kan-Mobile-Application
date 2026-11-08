@@ -37,7 +37,7 @@
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "Harn Kan uses your location to show nearby deals and set the pickup point for deals you create."
+          "locationWhenInUsePermission": "Harn Kan uses your location to show nearby deals, notify you about new deals near you, and set the pickup point for deals you create."
         }
       ],
       [
