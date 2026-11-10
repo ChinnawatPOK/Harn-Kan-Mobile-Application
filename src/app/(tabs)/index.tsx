@@ -1,5 +1,5 @@
 import { useRouter } from "expo-router";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -12,12 +12,16 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import Svg, { Path } from "react-native-svg";
+import Svg, { Circle, Path } from "react-native-svg";
 
 import { getErrorMessage } from "@/api/errors";
 import { BrandMark } from "@/components/brand-mark";
 import { useCurrentLocation } from "@/hooks/useCurrentLocation";
-import { useNearbyDeals, usePrefetchDeal } from "@/hooks/useDeals";
+import {
+  useNearbyDeals,
+  usePrefetchDeal,
+  useResolveDealScreen,
+} from "@/hooks/useDeals";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { useUnreadNotificationCount } from "@/hooks/useNotifications";
 import type { DealCategory, NearbyDeal } from "@/schemas/deal.schema";
@@ -33,7 +37,7 @@ type Deal = {
   joined: string;
   distance: string;
   timeLeft: string;
-  emoji: string;
+  kind: "food" | "drink";
   tint: string;
   initials: string[];
 };
@@ -55,7 +59,7 @@ function toDealCard(deal: NearbyDeal): Deal {
     joined: `${deal.joinedSlots} of ${deal.targetSlots} joined`,
     distance: formatDistance(deal.distanceMeters),
     timeLeft: formatTimeLeft(deal.expiresAt),
-    emoji: isFood ? "🍱" : "🧋",
+    kind: isFood ? "food" : "drink",
     tint: isFood ? "#fff0f6" : "#fff3ec",
     initials: deal.participantInitials,
   };
@@ -80,6 +84,9 @@ export default function HomeScreen() {
 
   const query = useDebouncedValue(search.trim(), 300);
   const prefetchDeal = usePrefetchDeal();
+  const resolveDealScreen = useResolveDealScreen();
+  const [openingId, setOpeningId] = useState<string | null>(null);
+  const isOpening = useRef(false);
   const unreadCount = useUnreadNotificationCount();
   const nearbyDeals = useNearbyDeals(
     coordinates
@@ -97,6 +104,22 @@ export default function HomeScreen() {
     [nearbyDeals.data],
   );
   const [isRefreshing, setIsRefreshing] = useState(false);
+
+  // Open the screen for the deal's current state once it has loaded (the
+  // press-in prefetch usually has it already). Pushing /deal/joiner right away
+  // showed a blank loading screen, plus a Redirect for own or paid deals.
+  const openDeal = async (dealId: string) => {
+    if (isOpening.current) return;
+    isOpening.current = true;
+    setOpeningId(dealId);
+    try {
+      const pathname = await resolveDealScreen(dealId);
+      router.push({ pathname, params: { id: dealId } });
+    } finally {
+      isOpening.current = false;
+      setOpeningId(null);
+    }
+  };
 
   const refresh = async () => {
     setIsRefreshing(true);
@@ -146,43 +169,47 @@ export default function HomeScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.header}>
-          <View>
+          <View style={styles.headerTop}>
             <BrandMark compact />
-            <Pressable
+            <TouchableOpacity
               accessibilityRole="button"
-              accessibilityLabel={`Current location: ${locationLabel}`}
-              onPress={() => void refreshLocation({ force: true })}
-              style={styles.locationButton}
+              accessibilityLabel={
+                unreadCount > 0
+                  ? `Notifications, ${unreadCount} unread`
+                  : "Notifications"
+              }
+              onPress={() => router.push("/notifications")}
+              style={styles.notificationButton}
             >
-              <Text style={styles.locationText}>{locationLabel}</Text>
-              <Text style={styles.chevron}>›</Text>
-            </Pressable>
+              <Svg
+                fill="none"
+                height={23}
+                stroke="#514c59"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={1.8}
+                viewBox="0 0 24 24"
+                width={23}
+              >
+                <Path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" />
+                <Path d="M10 21h4" />
+              </Svg>
+              {unreadCount > 0 ? (
+                <View style={styles.notificationDot} />
+              ) : null}
+            </TouchableOpacity>
           </View>
-          <TouchableOpacity
+          <Pressable
             accessibilityRole="button"
-            accessibilityLabel={
-              unreadCount > 0
-                ? `Notifications, ${unreadCount} unread`
-                : "Notifications"
-            }
-            onPress={() => router.push("/notifications")}
-            style={styles.notificationButton}
+            accessibilityLabel={`Current location: ${locationLabel}`}
+            onPress={() => void refreshLocation({ force: true })}
+            style={styles.locationButton}
           >
-            <Svg
-              fill="none"
-              height={23}
-              stroke="#514c59"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={1.8}
-              viewBox="0 0 24 24"
-              width={23}
-            >
-              <Path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" />
-              <Path d="M10 21h4" />
-            </Svg>
-            {unreadCount > 0 ? <View style={styles.notificationDot} /> : null}
-          </TouchableOpacity>
+            <Text numberOfLines={1} style={styles.locationText}>
+              {locationLabel}
+            </Text>
+            <Text style={styles.chevron}>›</Text>
+          </Pressable>
         </View>
 
         <View style={styles.searchBox}>
@@ -247,16 +274,10 @@ export default function HomeScreen() {
             {visibleDeals.map((deal) => (
               <DealCard
                 deal={deal}
+                isOpening={openingId === deal.id}
                 key={deal.id}
                 onPressIn={() => prefetchDeal(deal.id)}
-                onPress={() =>
-                  // Nearby deals are someone else's, so open the joiner screen
-                  // directly instead of bouncing through /deal/[id].
-                  router.push({
-                    pathname: "/deal/joiner",
-                    params: { id: deal.id },
-                  })
-                }
+                onPress={() => void openDeal(deal.id)}
               />
             ))}
           </View>
@@ -273,12 +294,46 @@ export default function HomeScreen() {
   );
 }
 
+function CategoryIcon({ kind }: { kind: Deal["kind"] }) {
+  return (
+    <Svg
+      fill="none"
+      height={38}
+      stroke={kind === "food" ? pink : "#ea580c"}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth={1.6}
+      viewBox="0 0 24 24"
+      width={38}
+    >
+      {kind === "food" ? (
+        <>
+          <Path d="M3.5 11h17a8.5 8.5 0 0 1-17 0Z" />
+          <Path d="M9 20.5h6" />
+          <Path d="M9 4.5c-1 1 1 2 0 3.5M13 4.5c-1 1 1 2 0 3.5M17 4.5c-1 1 1 2 0 3.5" />
+        </>
+      ) : (
+        <>
+          <Path d="M5.5 8h13" />
+          <Path d="M7 8l1.3 12.5h7.4L17 8" />
+          <Path d="M12 8l1.5-5.5h3" />
+          <Circle cx="10.5" cy="16.5" r="0.8" />
+          <Circle cx="13.5" cy="17.5" r="0.8" />
+          <Circle cx="12" cy="14" r="0.8" />
+        </>
+      )}
+    </Svg>
+  );
+}
+
 function DealCard({
   deal,
+  isOpening,
   onPress,
   onPressIn,
 }: {
   deal: Deal;
+  isOpening: boolean;
   onPress: () => void;
   onPressIn: () => void;
 }) {
@@ -286,12 +341,13 @@ function DealCard({
     <Pressable
       accessibilityLabel={`Open deal: ${deal.title}`}
       accessibilityRole="button"
+      accessibilityState={{ busy: isOpening }}
       onPress={onPress}
       onPressIn={onPressIn}
-      style={styles.dealCard}
+      style={[styles.dealCard, isOpening && styles.dealCardOpening]}
     >
       <View style={[styles.dealArtwork, { backgroundColor: deal.tint }]}>
-        <Text style={styles.dealEmoji}>{deal.emoji}</Text>
+        <CategoryIcon kind={deal.kind} />
       </View>
       <View style={styles.dealDetails}>
         <View style={styles.timeRow}>
@@ -340,21 +396,27 @@ const styles = StyleSheet.create({
     paddingBottom: 28,
   },
   header: {
-    alignItems: "center",
-    flexDirection: "row",
-    justifyContent: "space-between",
     paddingHorizontal: 20,
     paddingTop: 10,
     paddingBottom: 17,
   },
+  // Logo and bell share a row; the area name gets its own full-width line.
+  headerTop: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
+  },
   locationButton: {
     alignItems: "center",
+    alignSelf: "flex-start",
     flexDirection: "row",
     gap: 4,
     marginTop: 5,
+    maxWidth: "100%",
   },
   locationText: {
     color: "#171321",
+    flexShrink: 1,
     fontSize: 18,
     fontWeight: "800",
   },
@@ -363,11 +425,14 @@ const styles = StyleSheet.create({
     fontSize: 23,
     fontWeight: "700",
     lineHeight: 24,
+    // Centers the chevron under the 44pt bell when the name is truncated.
+    marginRight: 18,
   },
   notificationButton: {
     alignItems: "center",
     backgroundColor: "#f5f3f6",
     borderRadius: 22,
+    flexShrink: 0,
     height: 44,
     justifyContent: "center",
     width: 44,
@@ -482,15 +547,15 @@ const styles = StyleSheet.create({
     shadowRadius: 14,
     elevation: 2,
   },
+  dealCardOpening: {
+    opacity: 0.6,
+  },
   dealArtwork: {
     alignItems: "center",
     borderRadius: 17,
     height: 84,
     justifyContent: "center",
     width: 74,
-  },
-  dealEmoji: {
-    fontSize: 36,
   },
   dealDetails: {
     flex: 1,

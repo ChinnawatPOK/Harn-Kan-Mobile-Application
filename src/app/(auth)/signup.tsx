@@ -12,6 +12,7 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import Svg, { Path } from "react-native-svg";
 
 import { ApiError, getErrorMessage } from "@/api/errors";
 import { BrandMark } from "@/components/brand-mark";
@@ -166,7 +167,20 @@ export default function SignupScreen() {
             <View
               style={[styles.checkbox, agreedToTerms && styles.checkboxChecked]}
             >
-              {agreedToTerms ? <Text style={styles.checkmark}>✓</Text> : null}
+              {agreedToTerms ? (
+                <Svg
+                  fill="none"
+                  height={13}
+                  stroke="#fff"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={3}
+                  viewBox="0 0 24 24"
+                  width={13}
+                >
+                  <Path d="m5 12.5 4.5 4.5L19 7" />
+                </Svg>
+              ) : null}
             </View>
             <Text style={styles.termsText}>
               I agree to the{" "}
@@ -289,12 +303,6 @@ const styles = StyleSheet.create({
   checkboxChecked: {
     backgroundColor: colors.pink,
     borderColor: colors.pink,
-  },
-  checkmark: {
-    color: "#fff",
-    fontSize: 13,
-    fontWeight: "900",
-    lineHeight: 16,
   },
   termsText: {
     color: "#716c79",

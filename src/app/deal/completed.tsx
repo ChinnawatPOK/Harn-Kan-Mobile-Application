@@ -87,11 +87,13 @@ export default function CompletedDealScreen() {
               </View>
               <View style={styles.successCopy}>
                 <Text style={styles.successTitle}>Deal Completed</Text>
-                <Text style={styles.successDescription}>
-                  {receipt
-                    ? `Receipt ${receipt.receiptNo} · ${new Date(receipt.completedAt).toLocaleString()}`
-                    : "Loading the official receipt…"}
-                </Text>
+                {receipt || receiptQuery.isLoading ? (
+                  <Text style={styles.successDescription}>
+                    {receipt
+                      ? `Receipt ${receipt.receiptNo} · ${new Date(receipt.completedAt).toLocaleString()}`
+                      : "Loading the official receipt…"}
+                  </Text>
+                ) : null}
               </View>
             </View>
           ) : (
@@ -128,19 +130,6 @@ export default function CompletedDealScreen() {
                   ฿{receipt.payoutToHost.toLocaleString()}
                 </Text>
               </View>
-            </View>
-          ) : receiptQuery.isError ? (
-            <View style={styles.receiptError}>
-              <Text style={styles.successDescription}>
-                {receiptQuery.error.message}
-              </Text>
-              <Pressable
-                accessibilityRole="button"
-                onPress={() => void receiptQuery.refetch()}
-                style={styles.receiptRetry}
-              >
-                <Text style={styles.receiptRetryText}>Retry receipt</Text>
-              </Pressable>
             </View>
           ) : null}
 
@@ -189,20 +178,6 @@ export default function CompletedDealScreen() {
             </View>
           </View>
 
-          <Pressable
-            accessibilityRole="button"
-            disabled={!receipt || receiptQuery.isFetching}
-            onPress={() => void receiptQuery.refetch()}
-            style={({ pressed }) => [
-              styles.receiptButton,
-              pressed && styles.pressed,
-            ]}
-          >
-            <Icon color="#fff" name="ticket" size={18} />
-            <Text style={styles.receiptButtonText}>
-              {receiptQuery.isFetching ? "Refreshing…" : "Refresh Receipt"}
-            </Text>
-          </Pressable>
           <Pressable
             accessibilityRole="button"
             onPress={() => router.push("/(tabs)")}
@@ -298,7 +273,7 @@ function Icon({
   size,
 }: {
   color: string;
-  name: "back" | "check" | "ticket";
+  name: "back" | "check";
   size: number;
 }) {
   return (
@@ -314,12 +289,6 @@ function Icon({
     >
       {name === "back" ? <Path d="m15 18-6-6 6-6" /> : null}
       {name === "check" ? <Path d="m5 12 4 4L19 6" /> : null}
-      {name === "ticket" ? (
-        <>
-          <Path d="M4 6h16v4a2 2 0 0 0 0 4v4H4v-4a2 2 0 0 0 0-4V6Z" />
-          <Path d="M13 9h3M13 15h3M8 9v6" />
-        </>
-      ) : null}
     </Svg>
   );
 }
@@ -607,16 +576,6 @@ const styles = StyleSheet.create({
     color: "#9a3412",
     fontSize: 12,
   },
-  receiptRetry: {
-    alignSelf: "flex-start",
-    marginTop: 10,
-    paddingVertical: 5,
-  },
-  receiptRetryText: {
-    color: "#be185d",
-    fontSize: 12,
-    fontWeight: "800",
-  },
   participantsSection: {
     marginTop: 24,
   },
@@ -706,32 +665,9 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: "800",
   },
-  receiptButton: {
-    alignItems: "center",
-    backgroundColor: "#db2777",
-    borderRadius: 16,
-    elevation: 8,
-    flexDirection: "row",
-    gap: 8,
-    justifyContent: "center",
-    marginTop: 24,
-    paddingVertical: 16,
-    shadowColor: "#fbcfe8",
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.55,
-    shadowRadius: 10,
-  },
-  receiptButtonText: {
-    color: "#fff",
-    fontSize: 14,
-    fontWeight: "800",
-  },
-  pressed: {
-    opacity: 0.9,
-    transform: [{ scale: 0.98 }],
-  },
   homeButton: {
     alignItems: "center",
+    marginTop: 16,
     paddingVertical: 16,
   },
   homeButtonText: {

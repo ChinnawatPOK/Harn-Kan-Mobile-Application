@@ -186,12 +186,16 @@ export function useDeal(dealId: string | undefined) {
 
 export function useNearbyDeals(params: NearbyDealsParams | null) {
   const accessToken = useAuthStore((state) => state.accessToken);
+  const isFocused = useIsFocused();
   return useQuery({
     // Disabled until the device location is known.
     queryKey: nearbyDealsQueryKey(params ?? { lat: 0, lng: 0 }),
     queryFn: () => getNearbyDeals(params!),
     enabled: Boolean(accessToken && params),
     placeholderData: keepPreviousData,
+    // Poll only while the Explore tab is on screen; focusManager also pauses
+    // it while the app is in the background.
+    refetchInterval: isFocused ? DEAL_POLL_INTERVAL_MS : false,
   });
 }
 

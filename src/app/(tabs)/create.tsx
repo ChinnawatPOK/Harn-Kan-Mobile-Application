@@ -365,19 +365,6 @@ export default function CreateTab() {
             </Pressable>
           </View>
 
-          <View style={styles.splitCard}>
-            <View style={styles.splitIcon}>
-              <Icon color="#fff" name="people" size={20} />
-            </View>
-            <View>
-              <Text style={styles.splitCaption}>EACH PERSON PAYS</Text>
-              <Text style={styles.splitAmount}>
-                ฿{perPerson.toLocaleString()}
-              </Text>
-            </View>
-            <Text style={styles.splitBadge}>Even split</Text>
-          </View>
-
           <Pressable
             accessibilityRole="button"
             disabled={!canCreateDeal}
@@ -515,7 +502,7 @@ export default function CreateTab() {
                     {option}
                   </Text>
                   {selected ? (
-                    <Text style={styles.selectedCheck}>✓</Text>
+                    <Icon color="#be185d" name="check" size={18} />
                   ) : null}
                 </Pressable>
               );
@@ -536,6 +523,7 @@ function Icon({
   name:
     | "arrow"
     | "bag"
+    | "check"
     | "chevron"
     | "close"
     | "location"
@@ -562,6 +550,7 @@ function Icon({
           <Path d="M9 9V6a3 3 0 0 1 6 0v3" />
         </>
       ) : null}
+      {name === "check" ? <Path d="m5 12.5 4.5 4.5L19 7" /> : null}
       {name === "chevron" ? <Path d="m9 18 6-6-6-6" /> : null}
       {name === "close" ? <Path d="M6 6l12 12M18 6 6 18" /> : null}
       {name === "location" ? (
@@ -830,44 +819,6 @@ const styles = StyleSheet.create({
   rotatedChevron: {
     transform: [{ rotate: "90deg" }],
   },
-  splitCard: {
-    alignItems: "center",
-    backgroundColor: "#fdf2f8",
-    borderRadius: 16,
-    flexDirection: "row",
-    gap: 12,
-    marginBottom: 28,
-    padding: 16,
-  },
-  splitIcon: {
-    alignItems: "center",
-    backgroundColor: "#db2777",
-    borderRadius: 24,
-    height: 44,
-    justifyContent: "center",
-    width: 44,
-  },
-  splitCaption: {
-    color: "#ec4899",
-    fontSize: 12,
-    fontWeight: "700",
-  },
-  splitAmount: {
-    color: "#500724",
-    fontSize: 20,
-    fontWeight: "800",
-  },
-  splitBadge: {
-    backgroundColor: "#fff",
-    borderRadius: 999,
-    color: "#db2777",
-    fontSize: 10,
-    fontWeight: "700",
-    marginLeft: "auto",
-    overflow: "hidden",
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-  },
   createButton: {
     alignItems: "center",
     backgroundColor: "#be185d",
@@ -1024,11 +975,6 @@ const styles = StyleSheet.create({
   },
   expirationOptionTextSelected: {
     color: "#be185d",
-    fontWeight: "800",
-  },
-  selectedCheck: {
-    color: "#be185d",
-    fontSize: 16,
     fontWeight: "800",
   },
 });

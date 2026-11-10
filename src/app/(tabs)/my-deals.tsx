@@ -1,5 +1,5 @@
 import { useRouter } from "expo-router";
-import { useMemo, useState } from "react";
+import { type ReactNode, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -52,6 +52,18 @@ type Deal = {
 };
 
 const categories: Category[] = ["All", "Food", "Drink"];
+const historyRoles: HistoryRole[] = ["All Roles", "Creator", "Participant"];
+const historyRoleLabels: Record<HistoryRole, string> = {
+  "All Roles": "All",
+  Creator: "I created",
+  Participant: "I joined",
+};
+const historyStatuses: HistoryStatus[] = [
+  "All Status",
+  "Completed",
+  "Canceled",
+  "Expired",
+];
 const pink = "#db2777";
 
 const categoryValues: Record<Exclude<Category, "All">, DealCategory> = {
@@ -251,46 +263,41 @@ export default function MyDealsTab() {
           </View>
 
           {tab === "history" ? (
-            <ScrollView
-              contentContainerStyle={styles.filterList}
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              style={styles.filterScroll}
-            >
-              {categories.map((item) => (
-                <FilterChip
-                  key={`category-${item}`}
-                  label={item}
-                  selected={historyCategory === item}
-                  onPress={() => setHistoryCategory(item)}
-                  compact
-                />
-              ))}
-              <View style={styles.filterDivider} />
-              {(["All Roles", "Creator", "Participant"] as const).map(
-                (item) => (
+            <View style={styles.filterGroups}>
+              <FilterRow label="Category">
+                {categories.map((item) => (
+                  <FilterChip
+                    compact
+                    key={`category-${item}`}
+                    label={item}
+                    onPress={() => setHistoryCategory(item)}
+                    selected={historyCategory === item}
+                  />
+                ))}
+              </FilterRow>
+              <FilterRow label="My role">
+                {historyRoles.map((item) => (
                   <FilterChip
                     compact
                     key={`role-${item}`}
-                    label={item}
+                    label={historyRoleLabels[item]}
                     onPress={() => setHistoryRole(item)}
                     selected={historyRole === item}
                   />
-                ),
-              )}
-              <View style={styles.filterDivider} />
-              {(
-                ["All Status", "Completed", "Canceled", "Expired"] as const
-              ).map((item) => (
-                <FilterChip
-                  compact
-                  key={`status-${item}`}
-                  label={item}
-                  onPress={() => setHistoryStatus(item)}
-                  selected={historyStatus === item}
-                />
-              ))}
-            </ScrollView>
+                ))}
+              </FilterRow>
+              <FilterRow label="Status">
+                {historyStatuses.map((item) => (
+                  <FilterChip
+                    compact
+                    key={`status-${item}`}
+                    label={item === "All Status" ? "All" : item}
+                    onPress={() => setHistoryStatus(item)}
+                    selected={historyStatus === item}
+                  />
+                ))}
+              </FilterRow>
+            </View>
           ) : (
             <ScrollView
               contentContainerStyle={styles.filterList}
@@ -341,6 +348,27 @@ export default function MyDealsTab() {
         </View>
       </ScrollView>
     </SafeAreaView>
+  );
+}
+
+function FilterRow({
+  label,
+  children,
+}: {
+  label: string;
+  children: ReactNode;
+}) {
+  return (
+    <View style={styles.filterRow}>
+      <Text style={styles.filterRowLabel}>{label}</Text>
+      <ScrollView
+        contentContainerStyle={styles.filterRowChips}
+        horizontal
+        showsHorizontalScrollIndicator={false}
+      >
+        {children}
+      </ScrollView>
+    </View>
   );
 }
 
@@ -613,11 +641,27 @@ const styles = StyleSheet.create({
   filterChipTextSelected: {
     color: "#fff",
   },
-  filterDivider: {
-    backgroundColor: "#fce7f3",
-    height: 24,
-    marginHorizontal: 2,
-    width: 1,
+  // History: one labeled row per filter (category, role, status).
+  filterGroups: {
+    backgroundColor: "#fdf2f8",
+    borderRadius: 18,
+    gap: 10,
+    marginBottom: 16,
+    padding: 12,
+  },
+  filterRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 10,
+  },
+  filterRowLabel: {
+    color: "#64748b",
+    fontSize: 11,
+    fontWeight: "800",
+    width: 58,
+  },
+  filterRowChips: {
+    gap: 6,
   },
   dealList: {
     gap: 12,
