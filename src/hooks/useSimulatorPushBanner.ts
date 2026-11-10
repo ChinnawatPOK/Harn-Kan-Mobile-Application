@@ -1,9 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
-import * as Device from "expo-device";
 import * as Notifications from "expo-notifications";
 import { useEffect, useRef } from "react";
 
 import { notificationsQueryKey } from "@/hooks/useNotifications";
+import { isPushlessSimulator } from "@/lib/push-notifications";
 import type {
   NotificationType,
   PushNotificationData,
@@ -12,7 +12,7 @@ import { getNotifications } from "@/services/notification.service";
 import { useAuthStore } from "@/stores/auth.store";
 
 const POLL_INTERVAL_MS = 5_000;
-const isDevSimulator = __DEV__ && !Device.isDevice;
+const isDevSimulator = __DEV__ && isPushlessSimulator;
 
 // Same titles the Notification Service puts on a real push.
 const TITLES: Record<NotificationType, string> = {
@@ -22,7 +22,8 @@ const TITLES: Record<NotificationType, string> = {
 };
 
 /**
- * Dev only: simulators get no push token, so remote pushes never reach them.
+ * Dev only: simulators running our own build get no push token, so remote
+ * pushes never reach them (Expo Go gets real ones and skips this).
  * Polls the inbox and shows each new item as a local notification, which goes
  * through the same banner and tap handling as a real push.
  */

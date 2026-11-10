@@ -1,4 +1,4 @@
-import Constants from "expo-constants";
+import Constants, { ExecutionEnvironment } from "expo-constants";
 import * as Device from "expo-device";
 import * as Notifications from "expo-notifications";
 import { AndroidImportance } from "expo-notifications";
@@ -12,6 +12,16 @@ import {
 
 const ANDROID_CHANNEL_ID = "default";
 const UNREGISTER_TIMEOUT_MS = 3_000;
+const isExpoGo =
+  Constants.executionEnvironment === ExecutionEnvironment.StoreClient;
+const isIosSimulator = Platform.OS === "ios" && !Device.isDevice;
+
+/**
+ * Simulators running our own build (Xcode or EAS) get no remote push: the
+ * project has no APNs key yet. Expo Go is signed with Expo's credentials, so
+ * it gets real pushes even on a simulator.
+ */
+export const isPushlessSimulator = !Device.isDevice && !isExpoGo;
 
 // Pushes that arrive while the app is open still show as a banner.
 Notifications.setNotificationHandler({
@@ -62,6 +72,7 @@ async function getExpoToken(
     const { data } = await Notifications.getExpoPushTokenAsync({
       projectId,
       devicePushToken: device,
+      development: isIosSimulator ? true : undefined,
     });
     expoTokenFor = { deviceToken, expoToken: data };
   }
@@ -73,7 +84,7 @@ async function sync(
   devicePushToken?: Notifications.DevicePushToken,
 ): Promise<void> {
   if (Platform.OS !== "ios" && Platform.OS !== "android") return;
-  if (!Device.isDevice) {
+  if (isPushlessSimulator) {
     await hasPermission();
     return;
   }
