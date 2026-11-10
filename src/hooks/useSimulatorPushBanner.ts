@@ -50,6 +50,7 @@ export function useSimulatorPushBanner() {
           notificationId: item.id,
         };
         void Notifications.scheduleNotificationAsync({
+          identifier: `inbox-${item.id}`,
           content: {
             title: item.type ? TITLES[item.type] : item.shopName,
             body: item.message,
