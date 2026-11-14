@@ -25,6 +25,7 @@ import { useAuthStore } from "@/stores/auth.store";
 import { useLocationStore } from "@/stores/location.store";
 
 const DEAL_POLL_INTERVAL_MS = 10_000;
+const NEARBY_POLL_INTERVAL_MS = 1_000;
 
 export const dealsQueryKey = ["deals"] as const;
 export const dealQueryKey = (dealId: string) => ["deal", dealId] as const;
@@ -195,7 +196,7 @@ export function useNearbyDeals(params: NearbyDealsParams | null) {
     placeholderData: keepPreviousData,
     // Poll only while the Explore tab is on screen; focusManager also pauses
     // it while the app is in the background.
-    refetchInterval: isFocused ? DEAL_POLL_INTERVAL_MS : false,
+    refetchInterval: isFocused ? NEARBY_POLL_INTERVAL_MS : false,
   });
 }
 
